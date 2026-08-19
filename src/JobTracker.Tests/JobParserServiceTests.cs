@@ -1,12 +1,12 @@
+using System.Text;
 using JobTracker.Api.Services;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace JobTracker.Tests;
 
 public sealed class JobParserServiceTests
 {
-    private static JobParserService CreateParser() => new(new HttpClient(), NullLogger<JobParserService>.Instance);
+    private static JobParserService CreateParser(IOcrService? ocr = null) => new(new HttpClient(), ocr ?? new StubOcrService(string.Empty, "OCR provider is not configured."));
 
     [Fact]
     public void ParseText_ReadsLabeledFieldsAndKnownSkills()
@@ -37,11 +37,33 @@ public sealed class JobParserServiceTests
     }
 
     [Fact]
-    public void ParseScreenshot_ReturnsExplicitOcrNotice()
+    public async Task ParseScreenshot_MapsOcrTextIntoStructuredFields()
     {
-        var result = CreateParser().ParseScreenshot("posting.png");
+        var ocr = new StubOcrService("Backend Engineer\nCompany: Acme Labs\nLocation: Remote\nSalary: $140k\nSkills: C#, Docker", "OCR extracted details.");
+        await using var image = new MemoryStream(Encoding.UTF8.GetBytes("fake image"));
+
+        var result = await CreateParser(ocr).ParseScreenshotAsync(image, "posting.png", "image/png", CancellationToken.None);
+
+        Assert.Equal("Acme Labs", result.Company);
+        Assert.Equal("Backend Engineer", result.Title);
+        Assert.Equal("Remote", result.Location);
+        Assert.Contains("OCR", result.Notice);
+    }
+
+    [Fact]
+    public async Task ParseScreenshot_ReturnsPendingStateWhenProviderIsNotConfigured()
+    {
+        await using var image = new MemoryStream(Encoding.UTF8.GetBytes("fake image"));
+
+        var result = await CreateParser().ParseScreenshotAsync(image, "posting.png", "image/png", CancellationToken.None);
 
         Assert.Contains("OCR", result.Notice);
         Assert.Equal("OCR pending", result.Company);
+    }
+
+    private sealed class StubOcrService(string text, string notice) : IOcrService
+    {
+        public Task<OcrResult> ExtractTextAsync(Stream image, string fileName, string contentType, CancellationToken cancellationToken) =>
+            Task.FromResult(new OcrResult(text, !string.IsNullOrWhiteSpace(text), notice));
     }
 }
