@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: suffertracker
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d suffertracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  api:
+    build:
+      context: .
+      dockerfile: src/JobTracker.Api/Dockerfile
+    environment:
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=suffertracker;Username=postgres;Password=postgres
+      Jwt__Key: ${JWT_KEY:-local-development-secret-change-me}
+      FrontendOrigin: http://localhost:4200
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend:
+    build: ./frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - api
+volumes:
+  postgres-data:
