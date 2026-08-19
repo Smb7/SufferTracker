@@ -19,4 +19,4 @@ jobs:
           llm-api-key: ${{ secrets.LLM_API_KEY }}
           llm-provider: custom
           llm-model: deepseek-v4-flash
-          llm-base-url: https://api.deepseek.com/v1
+          llm-base-url: https://opencode.ai/zen/go
