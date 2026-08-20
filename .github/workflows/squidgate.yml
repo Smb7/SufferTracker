@@ -18,5 +18,5 @@ jobs:
         with:
           llm-api-key: ${{ secrets.LLM_API_KEY }}
           llm-provider: custom
-          llm-model: grok-4.5
-          llm-base-url: https://opencode.ai/zen/go/v1
+          llm-model: deepseek-v4-flash
+          llm-base-url: https://opencode.ai/zen/go/v1/
