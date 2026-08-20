@@ -1,6 +1,6 @@
 # SufferTracker
 
-SufferTracker is a job application tracker with a .NET 8 API, PostgreSQL persistence, and Angular frontend.
+SufferTracker is a job application tracker with a .NET 8 API, PostgreSQL persistence, and Angular frontend. The goal is to enable a easy, clean, data minded tracker for job applications. 
 
 ## Local development
 
@@ -19,3 +19,4 @@ Screenshot OCR is provider-neutral. Set `OCR_ENDPOINT`, `OCR_API_KEY`, and optio
 - `frontend`: standalone Angular application with guards, interceptor, dashboard, application capture, and settings.
 - `.github/workflows/squidgate.yml`: required SquidGate PR security gate configured for DeepSeek V4 Flash.
 - `.github/workflows/ci.yml`: backend tests, Angular build, and Docker build verification.
+
