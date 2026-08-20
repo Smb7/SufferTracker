@@ -6,5 +6,5 @@ public interface IJobParser
 {
     ParsedJobResponse ParseText(string text);
     Task<ParsedJobResponse> ParseUrlAsync(string url, CancellationToken cancellationToken);
-    ParsedJobResponse ParseScreenshot(string fileName);
+    Task<ParsedJobResponse> ParseScreenshotAsync(Stream image, string fileName, string contentType, CancellationToken cancellationToken);
 }

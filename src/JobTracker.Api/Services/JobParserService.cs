@@ -4,7 +4,7 @@ using JobTracker.Api.Contracts;
 
 namespace JobTracker.Api.Services;
 
-public sealed partial class JobParserService(HttpClient httpClient, ILogger<JobParserService> logger) : IJobParser
+public sealed partial class JobParserService(HttpClient httpClient, IOcrService ocrService) : IJobParser
 {
     public ParsedJobResponse ParseText(string text)
     {
@@ -34,11 +34,14 @@ public sealed partial class JobParserService(HttpClient httpClient, ILogger<JobP
         return parsed with { SourceUrl = uri.ToString(), Notice = "Review scraped details before saving." };
     }
 
-    public ParsedJobResponse ParseScreenshot(string fileName)
+    public async Task<ParsedJobResponse> ParseScreenshotAsync(Stream image, string fileName, string contentType, CancellationToken cancellationToken)
     {
-        logger.LogInformation("OCR requested for {FileName}; provider is not configured yet.", fileName);
-        return new ParsedJobResponse("OCR pending", "Review uploaded screenshot", string.Empty, string.Empty, "Pay not specified", "Location not specified", null,
-            "OCR is scaffolded. Add an OCR provider before relying on screenshot extraction.");
+        var ocr = await ocrService.ExtractTextAsync(image, fileName, contentType, cancellationToken);
+        if (string.IsNullOrWhiteSpace(ocr.Text))
+            return new ParsedJobResponse("OCR pending", "Review uploaded screenshot", string.Empty, string.Empty, "Pay not specified", "Location not specified", null, ocr.Notice);
+
+        var parsed = ParseText(ocr.Text);
+        return parsed with { Notice = ocr.Notice };
     }
 
     private static string? FindValue(IEnumerable<string> lines, params string[] labels)

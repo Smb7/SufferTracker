@@ -12,6 +12,7 @@ var jwt = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwt["Key"] ?? throw new InvalidOperationException("Jwt:Key must be configured.");
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddHttpClient<IOcrService, ConfiguredOcrService>(client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient<IJobParser, JobParserService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
