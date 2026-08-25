@@ -132,6 +132,72 @@ public sealed class JobParserServiceTests
         Assert.Equal("Pay not specified", result.Pay);
     }
 
+    [Fact]
+    public void BuildParsedFromHtml_StripsScriptsStylesAndComments()
+    {
+        const string html = """
+            <html><head>
+              <style>.job-card { color: red; } @media print { body {} }</style>
+              <script src="https://cdn.example.com/polyfill.js"></script>
+            </head><body>
+              <!-- analytics bootstrap -->
+              <script>var trackingId = "abc"; function boot() { return 1; }</script>
+              <h1>Senior Backend Engineer</h1>
+              <p>Acme Robotics is hiring in Austin, TX.</p>
+              <p>$140,000 - $180,000 per year. Requirements: C#, PostgreSQL, Docker.</p>
+              <noscript>Please enable JavaScript.</noscript>
+            </body></html>
+            """;
+
+        var result = JobParserService.BuildParsedFromHtml(html);
+
+        Assert.DoesNotContain("trackingId", result.Description);
+        Assert.DoesNotContain("polyfill", result.Description);
+        Assert.DoesNotContain(".job-card", result.Description);
+        Assert.DoesNotContain("enable JavaScript", result.Description);
+        Assert.Equal("Senior Backend Engineer", result.Title);
+        Assert.Equal("Acme Robotics", result.Company);
+        Assert.Equal("Austin, TX", result.Location);
+        Assert.Equal("$140,000 - $180,000 per year", result.Pay);
+    }
+
+    [Fact]
+    public void BuildParsedFromHtml_PrefersJsonLdJobPostingFields()
+    {
+        const string html = """
+            <html><body>
+              <script type="application/ld+json">
+                {"@context":"http://schema.org/","@type":"JobPosting",
+                 "title":"Staff Platform Engineer",
+                 "hiringOrganization":{"@type":"Organization","name":"Northwind Data"},
+                 "baseSalary":{"@type":"MonetaryAmount","currency":"USD",
+                   "value":{"@type":"QuantitativeValue","minValue":180000,"maxValue":220000,"unitText":"YEAR"}},
+                 "jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Seattle","addressRegion":"WA"}},
+                 "description":"<p>Build the platform. <b>Kubernetes required.</b></p>"}
+              </script>
+              <div class="serp">Indeed boilerplate noise</div>
+            </body></html>
+            """;
+
+        var result = JobParserService.BuildParsedFromHtml(html);
+
+        Assert.Equal("Staff Platform Engineer", result.Title);
+        Assert.Equal("Northwind Data", result.Company);
+        Assert.Equal("$180,000 - $220,000 per year", result.Pay);
+        Assert.Equal("Seattle, WA", result.Location);
+        Assert.Contains("Kubernetes", result.Skills);
+    }
+
+    [Fact]
+    public void TryExtractJobPosting_IgnoresMalformedJsonLd()
+    {
+        const string html = """<script type="application/ld+json">{ not valid json !!! }</script><body>Fallback text only.</body>""";
+
+        var structured = JobParserService.TryExtractJobPosting(html);
+
+        Assert.Null(structured);
+    }
+
     private sealed class StubOcrService(string text, string notice) : IOcrService
     {
         public Task<OcrResult> ExtractTextAsync(Stream image, string fileName, string contentType, CancellationToken cancellationToken) =>
