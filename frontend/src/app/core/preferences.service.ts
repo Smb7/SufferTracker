@@ -9,5 +9,5 @@ export class PreferencesService {
   constructor(private readonly http: HttpClient) {}
   get() { return this.http.get<Preferences>(this.endpoint); }
   update(preferences: Preferences) { return this.http.put<Preferences>(this.endpoint, preferences).pipe(tap(value => this.applyTheme(value.darkMode))); }
-  applyTheme(dark: boolean): void { document.documentElement.classList.toggle('light', !dark); }
+  applyTheme(dark: boolean): void { document.documentElement.classList.toggle('dark', dark); }
 }
