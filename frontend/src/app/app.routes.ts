@@ -5,6 +5,7 @@ import { authGuard } from './core/auth.guard';
 import { AppShellComponent } from './layout/app-shell.component';
 import { DemoComponent } from './pages/demo.component';
 import { LoginComponent } from './pages/login.component';
+import { RegisterComponent } from './pages/register.component';
 import { DashboardComponent } from './pages/dashboard.component';
 import { JobsComponent } from './pages/jobs.component';
 import { SettingsComponent } from './pages/settings.component';
@@ -20,5 +21,6 @@ export const routes: Routes = [
   ]},
   { path: '', component: DemoComponent, pathMatch: 'full' },
   { path: 'login', component: LoginComponent },
+  { path: 'register', component: RegisterComponent },
   { path: '**', redirectTo: '' }
 ];
