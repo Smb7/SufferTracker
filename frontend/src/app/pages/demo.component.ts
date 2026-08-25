@@ -2,10 +2,11 @@ import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NgIf } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { DemoShowcaseComponent } from './demo-showcase.component';
 
 @Component({
   standalone: true,
-  imports: [RouterLink, NgIf],
+  imports: [RouterLink, NgIf, DemoShowcaseComponent],
   template: `
     <main class="demo-page">
       <header class="demo-nav">
@@ -22,6 +23,11 @@ import { RouterLink } from '@angular/router';
           <a routerLink="/login" class="secondary-button">Log in</a>
         </div>
         <div class="hero-stat" *ngIf="applicationsThisWeek !== null"><strong>{{ applicationsThisWeek.toLocaleString() }}</strong><span>applications tracked this week</span></div>
+      </section>
+
+      <section class="demo-showcase-section">
+        <div class="demo-showcase-heading"><div class="eyebrow">See the product</div><h2>Six ways to read your search</h2></div>
+        <st-demo-showcase />
       </section>
 
       <section class="demo-grid">
