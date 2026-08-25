@@ -18,6 +18,6 @@ jobs:
         with:
           llm-api-key: ${{ secrets.LLM_API_KEY }}
           llm-provider: custom
-          llm-model: deepseek-v4-flash
+          llm-model: deepseek-v4-pro
           # squidgate-ignore
           llm-base-url: https://opencode.ai/zen/go/v1/
