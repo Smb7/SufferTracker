@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 
 @Component({
@@ -13,7 +13,8 @@ import { AuthService } from '../core/auth.service';
 export class LoginComponent {
   email = ''; password = ''; displayName = ''; code = ''; error = ''; loading = false; registerMode = false; mfaRequired = false;
   applicationsThisWeek: number | null = null;
-  constructor(private readonly auth: AuthService, private readonly http: HttpClient, private readonly router: Router) {
+  constructor(private readonly auth: AuthService, private readonly http: HttpClient, private readonly router: Router, route: ActivatedRoute) {
+    this.registerMode = route.snapshot.queryParamMap.get('register') === 'true';
     this.http.get<{ applicationsThisWeek: number }>('http://localhost:8080/api/stats/public').subscribe({
       next: stats => this.applicationsThisWeek = stats.applicationsThisWeek,
       error: () => this.applicationsThisWeek = null
