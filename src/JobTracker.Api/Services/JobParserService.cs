@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using JobTracker.Api.Contracts;
 
@@ -6,7 +7,41 @@ namespace JobTracker.Api.Services;
 
 public sealed partial class JobParserService(HttpClient httpClient, IOcrService ocrService) : IJobParser
 {
-    public ParsedJobResponse ParseText(string text)
+    public ParsedJobResponse ParseText(string text) => ParseStatic(text);
+
+    public async Task<ParsedJobResponse> ParseUrlAsync(string url, CancellationToken cancellationToken)
+    {
+        var uri = await UrlGuard.ValidatePublicHttpUrlAsync(url, cancellationToken);
+
+        using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var html = await response.Content.ReadAsStringAsync(cancellationToken);
+        return BuildParsedFromHtml(html) with { SourceUrl = uri.ToString(), Notice = "Review scraped details before saving." };
+    }
+
+    internal static ParsedJobResponse BuildParsedFromHtml(string html)
+    {
+        var readable = ExtractReadableText(html);
+        var parsed = string.IsNullOrWhiteSpace(readable)
+            ? new ParsedJobResponse("Unknown company", "Untitled role", string.Empty, string.Empty, "Pay not specified", "Location not specified", null, null)
+            : ParseStatic(readable);
+
+        var structured = TryExtractJobPosting(html);
+        var skills = FirstNonEmpty(parsed.Skills, string.IsNullOrWhiteSpace(parsed.Skills) ? ExtractSkills(FirstNonEmpty(structured?.Description, parsed.Description)) : null);
+        return parsed with
+        {
+            Title = structured?.Title ?? parsed.Title,
+            Company = structured?.Company ?? parsed.Company,
+            Pay = structured?.Pay ?? parsed.Pay,
+            Location = structured?.Location ?? parsed.Location,
+            Description = FirstNonEmpty(parsed.Description, structured?.Description),
+            Skills = skills
+        };
+    }
+
+    private static string FirstNonEmpty(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    internal static ParsedJobResponse ParseStatic(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentException("Job text is required.", nameof(text));
@@ -20,19 +55,6 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
         return new ParsedJobResponse(company, title, text.Trim(), skills, pay, location, null, null);
     }
 
-    public async Task<ParsedJobResponse> ParseUrlAsync(string url, CancellationToken cancellationToken)
-    {
-        var uri = await UrlGuard.ValidatePublicHttpUrlAsync(url, cancellationToken);
-
-        using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var html = await response.Content.ReadAsStringAsync(cancellationToken);
-        var text = HtmlTagRegex().Replace(WebUtility.HtmlDecode(html), " ");
-        text = WhitespaceRegex().Replace(text, " ").Trim();
-        var parsed = ParseText(text);
-        return parsed with { SourceUrl = uri.ToString(), Notice = "Review scraped details before saving." };
-    }
-
     public async Task<ParsedJobResponse> ParseScreenshotAsync(Stream image, string fileName, string contentType, CancellationToken cancellationToken)
     {
         var ocr = await ocrService.ExtractTextAsync(image, fileName, contentType, cancellationToken);
@@ -41,6 +63,128 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
 
         var parsed = ParseText(ocr.Text);
         return parsed with { Notice = ocr.Notice };
+    }
+
+    internal static string ExtractReadableText(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return string.Empty;
+        var bodyMatch = BodyRegex().Match(html);
+        var content = bodyMatch.Success ? bodyMatch.Groups[1].Value : html;
+        content = NoisyBlockRegex().Replace(content, " ");
+        content = CommentRegex().Replace(content, " ");
+        content = BlockBoundaryRegex().Replace(content, "\n");
+        content = HtmlTagRegex().Replace(content, " ");
+        var decoded = WebUtility.HtmlDecode(content).Replace("\r", "\n");
+        var lines = decoded.Split('\n')
+            .Select(line => WhitespaceRegex().Replace(line, " ").Trim())
+            .Where(line => line.Length > 0);
+        return string.Join('\n', lines);
+    }
+
+    internal sealed record StructuredJob(string? Title, string? Company, string? Pay, string? Location, string? Description);
+
+    internal static StructuredJob? TryExtractJobPosting(string html)
+    {
+        foreach (Match block in JsonLdRegex().Matches(html))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(block.Groups[1].Value, new JsonDocumentOptions { AllowTrailingCommas = true });
+                var posting = FindJobPosting(document.RootElement);
+                if (posting is not { } jobPosting) continue;
+
+                var title = jobPosting.TryGetProperty("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String ? titleElement.GetString() : null;
+                var company = ReadOrganization(jobPosting);
+                var pay = ReadSalary(jobPosting);
+                var location = ReadLocation(jobPosting);
+                var description = jobPosting.TryGetProperty("description", out var descriptionElement) && descriptionElement.ValueKind == JsonValueKind.String
+                    ? StripHtml(descriptionElement.GetString() ?? string.Empty)
+                    : null;
+                if (title is not null || company is not null || pay is not null || location is not null)
+                    return new StructuredJob(title, company, pay, location, description);
+            }
+            catch (JsonException)
+            {
+                // Malformed JSON-LD blocks are skipped; heuristic parsing still applies.
+            }
+        }
+        return null;
+    }
+
+    private static JsonElement? FindJobPosting(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            if (element.TryGetProperty("@type", out var type) &&
+                (type.ValueKind == JsonValueKind.String && type.GetString()?.Equals("JobPosting", StringComparison.OrdinalIgnoreCase) == true))
+                return element;
+            if (element.TryGetProperty("@graph", out var graph) && graph.ValueKind == JsonValueKind.Array)
+                foreach (var item in graph.EnumerateArray())
+                    if (FindJobPosting(item) is { } found) return found;
+            return null;
+        }
+        if (element.ValueKind == JsonValueKind.Array)
+            foreach (var item in element.EnumerateArray())
+                if (FindJobPosting(item) is { } found) return found;
+        return null;
+    }
+
+    private static string? ReadOrganization(JsonElement posting)
+    {
+        if (!posting.TryGetProperty("hiringOrganization", out var organization)) return null;
+        if (organization.ValueKind == JsonValueKind.String) return organization.GetString();
+        if (organization.ValueKind == JsonValueKind.Object && organization.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+            return name.GetString();
+        return null;
+    }
+
+    private static string? ReadSalary(JsonElement posting)
+    {
+        if (!posting.TryGetProperty("baseSalary", out var baseSalary)) return null;
+        var value = baseSalary.ValueKind == JsonValueKind.Object && baseSalary.TryGetProperty("value", out var nested) ? nested : baseSalary;
+        decimal? min = ReadNumber(value, "minValue") ?? ReadNumber(value, "value");
+        decimal? max = ReadNumber(value, "maxValue") ?? min;
+        if (min is not { } minValue) return null;
+        var currency = value.TryGetProperty("currency", out var currencyElement) && currencyElement.ValueKind == JsonValueKind.String ? CurrencySymbol(currencyElement.GetString()) : "$";
+        var unit = value.TryGetProperty("unitText", out var unitElement) && unitElement.ValueKind == JsonValueKind.String ? unitElement.GetString() : "YEAR";
+        var suffix = string.Equals(unit, "HOUR", StringComparison.OrdinalIgnoreCase) ? "/hour" : " per year";
+        return max is { } high && high != minValue
+            ? $"{currency}{minValue:N0} - {currency}{high:N0}{suffix}"
+            : $"{currency}{minValue:N0}{suffix}";
+    }
+
+    private static decimal? ReadNumber(JsonElement value, string property) =>
+        value.TryGetProperty(property, out var number) && number.ValueKind == JsonValueKind.Number && number.TryGetDecimal(out var parsed) ? parsed : null;
+
+    private static string CurrencySymbol(string? code) => code?.ToUpperInvariant() switch
+    {
+        "USD" => "$", "EUR" => "€", "GBP" => "£",
+        null or "" => "$",
+        _ => code + " "
+    };
+
+    private static string? ReadLocation(JsonElement posting)
+    {
+        if (!posting.TryGetProperty("jobLocation", out var jobLocation)) return null;
+        JsonElement? address = null;
+        if (jobLocation.ValueKind == JsonValueKind.Array && jobLocation.GetArrayLength() > 0)
+        {
+            var first = jobLocation.EnumerateArray().First();
+            if (first.ValueKind == JsonValueKind.Object && first.TryGetProperty("address", out var nested)) address = nested;
+        }
+        else if (jobLocation.ValueKind == JsonValueKind.Object && jobLocation.TryGetProperty("address", out var single)) address = single;
+
+        if (address is not JsonElement addressElement || addressElement.ValueKind != JsonValueKind.Object) return null;
+        var locality = addressElement.TryGetProperty("addressLocality", out var localityElement) && localityElement.ValueKind == JsonValueKind.String ? localityElement.GetString() : null;
+        var region = addressElement.TryGetProperty("addressRegion", out var regionElement) && regionElement.ValueKind == JsonValueKind.String ? regionElement.GetString() : null;
+        var joined = string.Join(", ", new[] { locality, region }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return joined.Length > 0 ? joined : null;
+    }
+
+    private static string StripHtml(string value)
+    {
+        var decoded = WebUtility.HtmlDecode(NoisyBlockRegex().Replace(HtmlTagRegex().Replace(value, " "), " "));
+        return WhitespaceRegex().Replace(decoded, " ").Trim();
     }
 
     private static string? FindValue(IEnumerable<string> lines, params string[] labels)
@@ -179,4 +323,19 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
 
     [GeneratedRegex("\\s+", RegexOptions.Compiled)]
     private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"<body\b[^>]*>([\s\S]*?)</body>", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex BodyRegex();
+
+    [GeneratedRegex(@"<\b(script|style|noscript|svg|iframe|template)\b[^>]*>[\s\S]*?</\1\s*>", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex NoisyBlockRegex();
+
+    [GeneratedRegex(@"<!--[\s\S]*?-->", RegexOptions.Compiled)]
+    private static partial Regex CommentRegex();
+
+    [GeneratedRegex(@"</?(?:p|div|h[1-6]|li|tr|section|article|header|footer|ul|ol|table)\b[^>]*>|<br\s*/?>", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex BlockBoundaryRegex();
+
+    [GeneratedRegex("""<script[^>]+type=["']application/ld\+json["'][^>]*>([\s\S]*?)</script>""", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex JsonLdRegex();
 }
