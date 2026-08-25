@@ -5,7 +5,7 @@ import { switchMap, tap } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class PreferencesService {
-  private readonly endpoint = 'http://localhost:8080/api/preferences';
+  private readonly endpoint = '/api/preferences';
   constructor(private readonly http: HttpClient) {}
   get() { return this.http.get<Preferences>(this.endpoint); }
   update(preferences: Preferences) { return this.http.put<Preferences>(this.endpoint, preferences).pipe(tap(value => this.applyTheme(value.darkMode))); }

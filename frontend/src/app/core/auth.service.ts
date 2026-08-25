@@ -6,7 +6,7 @@ import { AuthResponse, MfaSetup, MfaStatus } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly endpoint = 'http://localhost:8080/api/auth';
+  private readonly endpoint = '/api/auth';
   readonly user = signal<AuthResponse | null>(this.readUser());
   constructor(private readonly http: HttpClient, private readonly router: Router) {}
   get token(): string | null { return localStorage.getItem('st_token'); }

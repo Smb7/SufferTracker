@@ -31,7 +31,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     };
 });
 builder.Services.AddAuthorization();
-builder.Services.AddCors(options => options.AddPolicy("frontend", policy => policy.WithOrigins(builder.Configuration["FrontendOrigin"] ?? "http://localhost:4200").AllowAnyHeader().AllowAnyMethod()));
+builder.Services.AddCors(options => options.AddPolicy("frontend", policy =>
+{
+    var origins = (builder.Configuration["FrontendOrigin"] ?? "http://localhost:4200")
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    policy.WithOrigins(origins.Concat(["http://localhost:4200", "http://127.0.0.1:4200"]).Distinct().ToArray())
+        .AllowAnyHeader().AllowAnyMethod();
+}));
 builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
