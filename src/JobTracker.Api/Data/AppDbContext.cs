@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using JobTracker.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -5,6 +7,12 @@ namespace JobTracker.Api.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public static readonly JsonSerializerOptions StatusEventSerializerOptions = new()
+    {
+        Converters = { new JsonStringEnumConverter() },
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     public DbSet<User> Users => Set<User>();
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
@@ -29,6 +37,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(job => job.Company).HasMaxLength(200).IsRequired();
             entity.Property(job => job.Title).HasMaxLength(300).IsRequired();
             entity.Property(job => job.Status).HasConversion<string>().HasMaxLength(30);
+            entity.Property(job => job.StatusEvents).HasColumnType("jsonb").HasConversion(
+                events => JsonSerializer.Serialize(events, StatusEventSerializerOptions),
+                json => JsonSerializer.Deserialize<List<StatusEvent>>(json, StatusEventSerializerOptions) ?? new List<StatusEvent>(),
+                new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<List<StatusEvent>>(
+                    (left, right) => JsonSerializer.Serialize(left, StatusEventSerializerOptions) == JsonSerializer.Serialize(right, StatusEventSerializerOptions),
+                    events => events.Aggregate(17, (hash, item) => hash * 31 + item.Status.GetHashCode()),
+                    events => events.ToList()));
             entity.HasOne(job => job.User).WithMany(user => user.Jobs)
                 .HasForeignKey(job => job.UserId).OnDelete(DeleteBehavior.Cascade);
         });

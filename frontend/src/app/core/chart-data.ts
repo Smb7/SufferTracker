@@ -2,7 +2,7 @@ import { JobStatus } from './models';
 
 export interface ChartJob { status: JobStatus; interviewRound?: number | null; appliedAtUtc: string; }
 
-export const STATUS_COLORS: Record<string, string> = { Waiting: '#ed6b3f', Interview: '#8d7de1', JobOffer: '#72aa77', Rejected: '#bbb9b1', Ghosted: '#8b8780' };
+export const STATUS_COLORS: Record<string, string> = { Applied: '#ed6b3f', Waiting: '#ed6b3f', Interview: '#8d7de1', JobOffer: '#72aa77', Rejected: '#bbb9b1', Ghosted: '#8b8780' };
 
 export interface PipelineStat { label: string; status: JobStatus; count: number; width: number; color: string; }
 
@@ -12,7 +12,7 @@ export function countOf(jobs: ChartJob[], status: JobStatus): number {
 
 export function pipelineStats(jobs: ChartJob[]): PipelineStat[] {
   const definitions = [
-    { label: 'Waiting', status: 'Waiting' as JobStatus, color: 'orange' },
+    { label: 'Applied', status: 'Applied' as JobStatus, color: 'orange' },
     { label: 'Interview', status: 'Interview' as JobStatus, color: 'purple' },
     { label: 'Job offer', status: 'JobOffer' as JobStatus, color: 'green' },
     { label: 'Rejected', status: 'Rejected' as JobStatus, color: 'gray' }
@@ -28,7 +28,7 @@ export function kanbanColumns(interviewRounds: number): KanbanColumnDef[] {
   const interview: KanbanColumnDef[] = rounds > 1
     ? Array.from({ length: rounds }, (_, index) => ({ label: `Interview ${index + 1}`, status: 'Interview' as JobStatus, round: index + 1 }))
     : [{ label: 'Interview', status: 'Interview' }];
-  return [{ label: 'Waiting', status: 'Waiting' }, ...interview, { label: 'Job offer', status: 'JobOffer' }, { label: 'Ghosted', status: 'Ghosted' }, { label: 'Rejected', status: 'Rejected' }];
+  return [{ label: 'Applied', status: 'Applied' }, ...interview, { label: 'Job offer', status: 'JobOffer' }, { label: 'Ghosted', status: 'Ghosted' }, { label: 'Rejected', status: 'Rejected' }];
 }
 
 export function jobsInColumn<T extends ChartJob>(jobs: T[], column: KanbanColumnDef): T[] {
@@ -116,7 +116,7 @@ export function stackBuckets(jobs: ChartJob[], mode: StackMode): StackBucket[] {
 
 export function bucketSegments(buckets: StackBucket[], bucket: StackBucket): { cls: string; pct: number }[] {
   const max = Math.max(1, ...buckets.map(item => item.total));
-  return ['Waiting', 'Interview', 'JobOffer', 'Rejected', 'Ghosted']
+  return ['Applied', 'Waiting', 'Interview', 'JobOffer', 'Rejected', 'Ghosted']
     .map(status => ({ cls: `seg-${status.toLowerCase()}`, pct: ((bucket.counts[status] ?? 0) / max) * 100 }))
     .filter(segment => segment.pct > 0);
 }
@@ -128,7 +128,7 @@ export interface SankeyLayout { nodes: SankeyNode[]; ribbons: SankeyRibbon[]; he
 export function sankeyLayout(jobs: ChartJob[]): SankeyLayout {
   const height = 220; const width = 640; const nodeWidth = 110; const leftX = 16; const rightX = width - nodeWidth - 16;
   const outcomes = [
-    { label: 'Waiting', count: countOf(jobs, 'Waiting'), color: STATUS_COLORS['Waiting'] },
+    { label: 'Applied', count: countOf(jobs, 'Applied'), color: STATUS_COLORS['Applied'] },
     { label: 'Interview', count: countOf(jobs, 'Interview'), color: STATUS_COLORS['Interview'] },
     { label: 'Offer', count: countOf(jobs, 'JobOffer'), color: STATUS_COLORS['JobOffer'] },
     { label: 'Rejected', count: countOf(jobs, 'Rejected'), color: STATUS_COLORS['Rejected'] },

@@ -21,7 +21,7 @@ const TITLES = [
 
 /** Fixed status mix so every visit tells the same story: 100 applications, realistic outcomes. */
 const STATUS_MIX: { status: ChartJob['status']; count: number }[] = [
-  { status: 'Waiting', count: 30 },
+  { status: 'Applied', count: 30 },
   { status: 'Interview', count: 24 },
   { status: 'JobOffer', count: 6 },
   { status: 'Rejected', count: 29 },
