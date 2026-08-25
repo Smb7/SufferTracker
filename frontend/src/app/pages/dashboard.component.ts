@@ -15,7 +15,7 @@ const STATUS_COLORS: Record<string, string> = { Waiting: '#ed6b3f', Interview: '
 
 @Component({ standalone: true, imports: [NgFor, NgIf, DatePipe, RouterLink], template: `
   <header class="page-header"><div><div class="eyebrow">{{ today | date:'EEEE, MMMM d' }}</div><h1>Good {{ greeting }}, {{ firstName }}.</h1><p class="subtle">Here is the shape of your search right now.</p></div><a routerLink="/jobs" class="primary-button">+ Add application</a></header>
-  <section class="stat-grid"><div class="stat-card accent"><span class="stat-label">Active pipeline</span><strong>{{ activeCount }}</strong><span class="trend">↑ {{ activeCount ? '12' : '0' }}% <small>vs last month</small></span></div><div class="stat-card"><span class="stat-label">Interviews</span><strong>{{ interviewCount }}</strong><span class="stat-note">{{ interviewCount ? 'Keep the momentum' : 'Your next one is waiting' }}</span></div><div class="stat-card"><span class="stat-label">Response rate</span><strong>{{ responseRate }}<small>%</small></strong><span class="stat-note">Across all applications</span></div><div class="stat-card"><span class="stat-label">Offers</span><strong>{{ offerCount }}</strong><span class="stat-note">The finish line is visible</span></div></section>
+  <section class="stat-grid"><div class="stat-card accent"><span class="stat-label">Active pipeline</span><strong>{{ activeCount }}</strong><span class="trend">{{ monthTrend }} <small>applications vs last month</small></span></div><div class="stat-card"><span class="stat-label">Interviews</span><strong>{{ interviewCount }}</strong><span class="stat-note">{{ interviewCount ? 'Keep the momentum' : 'Your next one is waiting' }}</span></div><div class="stat-card"><span class="stat-label">Response rate</span><strong>{{ responseRate }}<small>%</small></strong><span class="stat-note">Across all applications</span></div><div class="stat-card"><span class="stat-label">Offers</span><strong>{{ offerCount }}</strong><span class="stat-note">The finish line is visible</span></div></section>
   <div class="view-switch"><button *ngFor="let view of views" [class.selected]="visualizer === view.key" (click)="selectView(view.key)">{{ view.label }}</button></div>
   <div class="dashboard-grid" *ngIf="visualizer === 'pulse'">
     <section class="panel pipeline-panel"><div class="panel-heading"><div><div class="eyebrow">Pipeline pulse</div><h2>Applications by stage</h2></div><a routerLink="/jobs" class="text-link">View all →</a></div><div class="pipeline-bars"><div class="pipeline-row" *ngFor="let item of pipeline"><div class="row-meta"><span>{{ item.label }}</span><b>{{ item.count }}</b></div><div class="bar-track"><div class="bar-fill" [style.width.%]="item.width" [class]="item.color"></div></div></div></div></section>
@@ -56,6 +56,15 @@ export class DashboardComponent implements OnInit {
   get waitingCount(): number { return this.jobs.filter(job => job.status === 'Waiting').length; }
   get respondedCount(): number { return this.interviewCount + this.offerCount + this.rejectedCount; }
   get responseRate(): number { return this.rateNumber(this.respondedCount, this.jobs.length); }
+  get monthTrend(): string {
+    const now = new Date();
+    const thisMonth = this.jobs.filter(job => sameMonth(new Date(job.appliedAtUtc), now)).length;
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonth = this.jobs.filter(job => sameMonth(new Date(job.appliedAtUtc), lastMonthDate)).length;
+    if (!lastMonth) return thisMonth ? `↑ ${thisMonth} new` : 'No activity';
+    const change = Math.round(((thisMonth - lastMonth) / lastMonth) * 100);
+    return change >= 0 ? `↑ ${change}%` : `↓ ${Math.abs(change)}%`;
+  }
   get recentJobs(): Job[] { return [...this.jobs].sort((a, b) => b.updatedAtUtc.localeCompare(a.updatedAtUtc)).slice(0, 5); }
   get pipeline(): { label: string; status: JobStatus; count: number; width: number; color: string }[] { const values = [{ label: 'Waiting', status: 'Waiting' as JobStatus, color: 'orange' }, { label: 'Interview', status: 'Interview' as JobStatus, color: 'purple' }, { label: 'Job offer', status: 'JobOffer' as JobStatus, color: 'green' }, { label: 'Rejected', status: 'Rejected' as JobStatus, color: 'gray' }]; const max = Math.max(1, ...values.map(value => this.countOf(value.status))); return values.map(value => ({ ...value, count: this.countOf(value.status), width: (this.countOf(value.status) / max) * 100 })); }
   get columns(): KanbanColumn[] {
@@ -177,6 +186,7 @@ export class DashboardComponent implements OnInit {
 }
 
 function round(value: number): number { return Math.round(value * 100) / 100; }
+function sameMonth(date: Date, reference: Date): boolean { return date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth(); }
 function startOfDay(time: number): number { const date = new Date(time); date.setHours(0, 0, 0, 0); return date.getTime(); }
 function startOfWeek(time: number): number { const date = new Date(time); return startOfDay(date.getTime()) - ((date.getDay() + 6) % 7) * 86400000; }
 function weekKey(time: number): string { return new Date(time).toISOString().slice(0, 10); }
