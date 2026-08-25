@@ -6,5 +6,6 @@ public enum JobStatus
     Interview,
     JobOffer,
     Ghosted,
-    Rejected
+    Rejected,
+    Applied
 }

@@ -18,11 +18,12 @@ interface EditModel {
   <div class="modal-backdrop" *ngIf="editing" (click)="closeEdit()">
     <div class="modal-panel panel" (click)="$event.stopPropagation()">
       <div class="panel-heading"><div><div class="eyebrow">Edit application</div><h2>{{ editing.company }}</h2></div><button class="icon-button" title="Close" (click)="closeEdit()">×</button></div>
+      <div class="timeline-chips" *ngIf="editing?.statusEvents?.length"><div class="eyebrow">Progression</div><span class="chip" *ngFor="let event of editing.statusEvents">{{ label(event.status) }}</span></div>
       <div class="edit-grid">
         <label>Company<input [(ngModel)]="editModel.company"></label>
         <label>Job title<input [(ngModel)]="editModel.title"></label>
         <label>Nickname <small>Optional, for quick filtering.</small><input [(ngModel)]="editModel.nickname" placeholder="e.g. Dream gig"></label>
-        <label>Status<select [(ngModel)]="editModel.status"><option *ngFor="let status of statuses" [value]="status">{{ label(status) }}</option></select></label>
+        <label>Status <small *ngIf="!offerUnlocked(editing)">Record an interview to unlock 'Job offer'.</small><select [(ngModel)]="editModel.status"><option *ngFor="let status of statuses" [value]="status" [disabled]="status === 'JobOffer' && !offerUnlocked(editing)">{{ label(status) }}</option></select></label>
         <label *ngIf="editModel.status === 'Interview'">Interview round<strong class="range-value">{{ editModel.interviewRound }}</strong><select [(ngModel)]="editModel.interviewRound"><option *ngFor="let n of rounds" [ngValue]="n">{{ n }}</option></select></label>
         <label>Pay<input [(ngModel)]="editModel.pay" placeholder="e.g. $120k"></label>
         <label>Location<input [(ngModel)]="editModel.location" placeholder="e.g. Remote"></label>
@@ -37,8 +38,8 @@ interface EditModel {
 export class JobsComponent implements OnInit {
   jobs: Job[] = []; rawText = ''; jobUrl = ''; parsedNickname = ''; screenshot: File | null = null;
   captureMode: 'text' | 'link' | 'screenshot' = 'text'; parsed: ParsedJob | null = null; parsing = false; showCapture = false; message = ''; search = ''; activeFilter = 'All';
-  filters = ['All', 'Waiting', 'Interview', 'Job offer', 'Ghosted', 'Rejected'];
-  statuses: JobStatus[] = ['Waiting', 'Interview', 'JobOffer', 'Ghosted', 'Rejected'];
+  filters = ['All', 'Applied', 'Interview', 'Job offer', 'Ghosted', 'Rejected'];
+  statuses: JobStatus[] = ['Applied', 'Interview', 'JobOffer', 'Ghosted', 'Rejected'];
   rounds: number[] = Array.from({ length: 10 }, (_, index) => index + 1);
   editing: Job | null = null; editModel!: EditModel;
   constructor(private readonly service: JobsService, private readonly preferences: PreferencesService) {}
@@ -81,8 +82,12 @@ export class JobsComponent implements OnInit {
     this.service.create({ ...this.parsed, nickname: this.parsedNickname, status: 'Waiting' }).subscribe({ next: () => { this.parsed = null; this.rawText = ''; this.jobUrl = ''; this.parsedNickname = ''; this.showCapture = false; this.refresh(); }, error: () => this.message = 'Could not save this application.' });
   }
   changeStatus(job: Job, status: JobStatus): void {
-    const interviewRound = status === 'Interview' ? (job.interviewRound ?? 1) : undefined;
-    this.service.update(job.id, { ...toPayload(job), status, interviewRound }).subscribe({ next: updated => Object.assign(job, updated), error: () => this.message = 'Could not update the status.' });
+    const interviewRound = status === 'Interview' ? Math.max(1, job.interviewRound ?? 1) : job.interviewRound;
+    try {
+      this.service.update(job.id, { ...toPayload(job), statusEvents: job.statusEvents ?? [], status, interviewRound }).subscribe({ next: updated => Object.assign(job, updated), error: error => this.message = error.error?.message ?? 'Could not update the status.' });
+    } catch (error) {
+      this.message = (error as Error).message;
+    }
   }
   openEdit(job: Job): void {
     this.editing = job; this.message = '';
@@ -90,17 +95,23 @@ export class JobsComponent implements OnInit {
   }
   closeEdit(): void { this.editing = null; this.message = ''; }
   saveEdit(): void {
-    if (!this.editing) return;
+    const target = this.editing;
+    if (!target) return;
     if (!this.editModel.company.trim() || !this.editModel.title.trim()) { this.message = 'Company and title are required.'; return; }
-    const payload = { ...this.editModel, interviewRound: this.editModel.status === 'Interview' ? Number(this.editModel.interviewRound || 1) : undefined, appliedAtUtc: this.editModel.appliedDate ? new Date(`${this.editModel.appliedDate}T00:00:00Z`).toISOString() : undefined };
-    this.service.update(this.editing.id, payload).subscribe({ next: updated => { Object.assign(this.editing!, updated); this.closeEdit(); }, error: () => this.message = 'Could not save changes.' });
+    const payload = { ...this.editModel, statusEvents: target.statusEvents ?? [], interviewRound: this.editModel.status === 'Interview' ? Number(this.editModel.interviewRound || 1) : undefined, appliedAtUtc: this.editModel.appliedDate ? new Date(`${this.editModel.appliedDate}T00:00:00Z`).toISOString() : undefined };
+    try {
+      this.service.update(target.id, payload).subscribe({ next: updated => { Object.assign(target, updated); this.closeEdit(); }, error: error => this.message = error.error?.message ?? 'Could not save changes.' });
+    } catch (error) {
+      this.message = (error as Error).message;
+    }
   }
   remove(job: Job): void { this.service.delete(job.id).subscribe({ next: () => this.jobs = this.jobs.filter(item => item.id !== job.id) }); }
   refresh(): void { this.service.list().subscribe({ next: jobs => this.jobs = jobs }); }
   filterCount(filter: string): number { return filter === 'All' ? this.jobs.length : this.jobs.filter(job => this.label(job.status) === filter).length; }
-  label(status: JobStatus): string { return status === 'JobOffer' ? 'Job offer' : status; }
+  label(status: JobStatus): string { if (status === 'JobOffer') return 'Job offer'; if (status === 'Waiting') return 'Applied'; return status; }
+  offerUnlocked(job: Job | null): boolean { return !!job && (job.status === 'Interview' || job.status === 'JobOffer' || (job.interviewRound ?? 0) > 0 || !!job.statusEvents?.some(event => event.status === 'Interview')); }
 }
 
 function toPayload(job: Job) {
-  return { company: job.company, title: job.title, description: job.description, skills: job.skills, pay: job.pay, location: job.location, nickname: job.nickname };
+  return { company: job.company, title: job.title, description: job.description, skills: job.skills, pay: job.pay, location: job.location, nickname: job.nickname, statusEvents: job.statusEvents ?? [] };
 }
