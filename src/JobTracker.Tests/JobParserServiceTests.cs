@@ -61,6 +61,77 @@ public sealed class JobParserServiceTests
         Assert.Equal("OCR pending", result.Company);
     }
 
+    [Fact]
+    public void ParseText_ExtractsCompanyLocationAndPayFromUnlabeledPosting()
+    {
+        const string text = """
+            Senior Backend Engineer
+            Acme Robotics is hiring in Austin, TX (Hybrid).
+            We are looking for a senior .NET developer to build APIs.
+            $140,000 - $180,000 per year
+            Requirements: C#, PostgreSQL, Docker, Azure
+            """;
+
+        var result = CreateParser().ParseText(text);
+
+        Assert.Equal("Senior Backend Engineer", result.Title);
+        Assert.Equal("Acme Robotics", result.Company);
+        Assert.Equal("Austin, TX", result.Location);
+        Assert.Equal("$140,000 - $180,000 per year", result.Pay);
+        Assert.Contains("C#", result.Skills);
+    }
+
+    [Fact]
+    public void ParseText_DetectsRemoteWhenNoCityPresent()
+    {
+        var result = CreateParser().ParseText("Platform Engineer\nFully remote, work from home anywhere.\n$120k - $150k");
+
+        Assert.Equal("Remote", result.Location);
+        Assert.Equal("$120,000 - $150,000 per year", result.Pay);
+    }
+
+    [Theory]
+    [InlineData("$45 - $60 per hour", "$45 - $60/hour")]
+    [InlineData("$95,000 a year", "$95,000 per year")]
+    [InlineData("€55/hr", "€55/hour")]
+    public void ParseText_NormalizesPayFormats(string input, string expected)
+    {
+        var result = CreateParser().ParseText($"QA Analyst\n{input}\nRequirements: attention to detail");
+
+        Assert.Equal(expected, result.Pay);
+    }
+
+    [Fact]
+    public void ParseText_TrimsPipeAndAtSuffixesFromTitle()
+    {
+        var piped = CreateParser().ParseText("Staff .NET Engineer | Nova Systems\nRemote\n");
+        Assert.Equal("Staff .NET Engineer", piped.Title);
+
+        var atStyle = CreateParser().ParseText("Principal Engineer at Orion Labs\nDenver, CO\n");
+        Assert.Equal("Principal Engineer", atStyle.Title);
+    }
+
+    [Fact]
+    public void ParseText_ExtractsCompanyFromJoinAndAboutLines()
+    {
+        var join = CreateParser().ParseText("Join Vertex Labs as a data analyst!\nRemote\n");
+        Assert.Equal("Vertex Labs", join.Company);
+
+        var about = CreateParser().ParseText("Data Analyst\nAbout Copperline: we build mapping software.\n");
+        Assert.Equal("Copperline", about.Company);
+    }
+
+    [Fact]
+    public void ParseText_KeepsSafeDefaultsWhenHeuristicsFindNothing()
+    {
+        var result = CreateParser().ParseText("We are looking for someone great.");
+
+        Assert.Equal("We are looking for someone great.", result.Title);
+        Assert.Equal("Unknown company", result.Company);
+        Assert.Equal("Location not specified", result.Location);
+        Assert.Equal("Pay not specified", result.Pay);
+    }
+
     private sealed class StubOcrService(string text, string notice) : IOcrService
     {
         public Task<OcrResult> ExtractTextAsync(Stream image, string fileName, string contentType, CancellationToken cancellationToken) =>
