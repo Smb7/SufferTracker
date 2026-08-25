@@ -22,10 +22,9 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
 
     public async Task<ParsedJobResponse> ParseUrlAsync(string url, CancellationToken cancellationToken)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
-            throw new ArgumentException("A valid HTTP or HTTPS URL is required.", nameof(url));
+        var uri = await UrlGuard.ValidatePublicHttpUrlAsync(url, cancellationToken);
 
-        using var response = await httpClient.GetAsync(uri, cancellationToken);
+        using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
         var html = await response.Content.ReadAsStringAsync(cancellationToken);
         var text = HtmlTagRegex().Replace(WebUtility.HtmlDecode(html), " ");
