@@ -11,7 +11,7 @@ import { DemoShowcaseComponent } from './demo-showcase.component';
     <main class="demo-page">
       <header class="demo-nav">
         <a class="brand light-brand" routerLink="/"><span class="brand-mark">S</span><span>Suffer<span class="muted">Tracker</span></span></a>
-        <nav><a routerLink="/login" class="ghost-link">Log in</a><a routerLink="/login" [queryParams]="{ register: true }" class="primary-button small">Create account</a></nav>
+        <nav><a routerLink="/login" class="ghost-link">Log in</a><a routerLink="/register" class="primary-button small">Create account</a></nav>
       </header>
 
       <section class="demo-hero">
@@ -19,7 +19,7 @@ import { DemoShowcaseComponent } from './demo-showcase.component';
         <h1>Every application.<br><em>One clear picture.</em></h1>
         <p class="subtle">Stop losing track of where you applied, what they said, and which door is still open. SufferTracker turns scattered applications into a pipeline you can actually read.</p>
         <div class="hero-actions">
-          <a routerLink="/login" [queryParams]="{ register: true }" class="primary-button">Start tracking free <span>→</span></a>
+          <a routerLink="/register" class="primary-button">Start tracking free <span>→</span></a>
           <a routerLink="/login" class="secondary-button">Log in</a>
         </div>
         <div class="hero-stat" *ngIf="applicationsThisWeek !== null"><strong>{{ applicationsThisWeek.toLocaleString() }}</strong><span>applications tracked this week</span></div>
@@ -48,7 +48,7 @@ import { DemoShowcaseComponent } from './demo-showcase.component';
       <section class="demo-band">
         <h2>Your next offer is already out there.<br>Keep score until it lands.</h2>
         <div class="hero-actions center">
-          <a routerLink="/login" [queryParams]="{ register: true }" class="primary-button">Create your account <span>→</span></a>
+          <a routerLink="/register" class="primary-button">Create your account <span>→</span></a>
           <a routerLink="/login" class="ghost-link">Already tracking? Log in</a>
         </div>
       </section>
