@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace JobTracker.Api.Controllers;
 
 [ApiController, Route("api/auth")]
-public sealed class AuthController(AppDbContext db, ITokenService tokens, IPasswordHasher<User> hasher) : ControllerBase
+public sealed class AuthController(AppDbContext db, ITokenService tokens, IPasswordHasher<User> hasher, ITotpService totp) : ControllerBase
 {
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken cancellationToken)
@@ -36,7 +36,53 @@ public sealed class AuthController(AppDbContext db, ITokenService tokens, IPassw
         var user = await db.Users.SingleOrDefaultAsync(item => item.Email == request.Email.Trim().ToLowerInvariant(), cancellationToken);
         if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed)
             return Unauthorized(new { message = "Invalid email or password." });
+        if (user.MfaEnabled && !totp.ValidateCode(user.MfaSecret ?? string.Empty, request.Code))
+            return Unauthorized(new { mfaRequired = true, message = "Enter the 6-digit code from your authenticator app." });
         return Ok(ToResponse(user));
+    }
+
+    [Authorize, HttpGet("mfa/status")]
+    public async Task<IActionResult> MfaStatus(CancellationToken cancellationToken)
+    {
+        var user = await CurrentUser(cancellationToken);
+        if (user is null) return Unauthorized();
+        return Ok(new MfaStatusResponse(user.MfaEnabled));
+    }
+
+    [Authorize, HttpPost("mfa/setup")]
+    public async Task<ActionResult<MfaSetupResponse>> StartMfaSetup(CancellationToken cancellationToken)
+    {
+        var user = await CurrentUser(cancellationToken);
+        if (user is null) return Unauthorized();
+        user.MfaSecret = totp.GenerateSecret();
+        user.MfaEnabled = false;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new MfaSetupResponse(user.MfaSecret, totp.BuildOtpAuthUri(user.Email, user.MfaSecret)));
+    }
+
+    [Authorize, HttpPost("mfa/enable")]
+    public async Task<IActionResult> EnableMfa(MfaCodeRequest request, CancellationToken cancellationToken)
+    {
+        var user = await CurrentUser(cancellationToken);
+        if (user is null) return Unauthorized();
+        if (string.IsNullOrEmpty(user.MfaSecret)) return BadRequest(new { message = "Start MFA setup before enabling it." });
+        if (!totp.ValidateCode(user.MfaSecret, request.Code)) return BadRequest(new { message = "That code is not valid. Try the next one." });
+        user.MfaEnabled = true;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new MfaStatusResponse(true));
+    }
+
+    [Authorize, HttpPost("mfa/disable")]
+    public async Task<IActionResult> DisableMfa(MfaCodeRequest request, CancellationToken cancellationToken)
+    {
+        var user = await CurrentUser(cancellationToken);
+        if (user is null) return Unauthorized();
+        if (user.MfaEnabled && !totp.ValidateCode(user.MfaSecret ?? string.Empty, request.Code))
+            return BadRequest(new { message = "That code is not valid. MFA is still enabled." });
+        user.MfaEnabled = false;
+        user.MfaSecret = null;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new MfaStatusResponse(false));
     }
 
     [Authorize, HttpPut("profile")]

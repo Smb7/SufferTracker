@@ -23,7 +23,7 @@ public sealed class PreferencesController(AppDbContext db) : ControllerBase
     {
         if (request.InterviewRounds is < 1 or > 10) return BadRequest(new { message = "Interview rounds must be between 1 and 10." });
         var preferences = await GetEntity(cancellationToken);
-        preferences.DarkMode = request.DarkMode; preferences.DefaultView = request.DefaultView; preferences.InterviewRounds = request.InterviewRounds; preferences.MfaEnabled = request.MfaEnabled;
+        preferences.DarkMode = request.DarkMode; preferences.DefaultView = request.DefaultView; preferences.InterviewRounds = request.InterviewRounds;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(ToResponse(preferences));
     }
@@ -36,5 +36,5 @@ public sealed class PreferencesController(AppDbContext db) : ControllerBase
         preferences = new UserPreference { UserId = userId }; db.UserPreferences.Add(preferences); await db.SaveChangesAsync(cancellationToken); return preferences;
     }
 
-    private static PreferencesResponse ToResponse(UserPreference item) => new(item.DarkMode, item.DefaultView, item.InterviewRounds, item.MfaEnabled);
+    private static PreferencesResponse ToResponse(UserPreference item) => new(item.DarkMode, item.DefaultView, item.InterviewRounds);
 }
