@@ -19,6 +19,7 @@ services:
       context: .
       dockerfile: src/JobTracker.Api/Dockerfile
     environment:
+      ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=suffertracker;Username=postgres;Password=postgres
       Jwt__Key: ${JWT_KEY:-local-development-secret-change-me}
       FrontendOrigin: http://localhost:4200

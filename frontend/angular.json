@@ -8,7 +8,7 @@
       "sourceRoot": "src",
       "prefix": "st",
       "architect": {
-        "build": { "builder": "@angular-devkit/build-angular:application", "options": { "browser": "src/main.ts", "tsConfig": "tsconfig.app.json", "assets": [], "styles": ["src/styles.css"] } },
+        "build": { "builder": "@angular-devkit/build-angular:application", "options": { "browser": "src/main.ts", "tsConfig": "tsconfig.app.json", "polyfills": ["zone.js"], "assets": [], "styles": ["src/styles.css"] }, "configurations": { "production": { "outputHashing": "all", "budgets": [] }, "development": { "optimization": false, "extractLicenses": false, "sourceMap": true } }, "defaultConfiguration": "production" },
         "serve": { "builder": "@angular-devkit/build-angular:dev-server", "configurations": { "production": { "buildTarget": "suffertracker-web:build:production" }, "development": { "buildTarget": "suffertracker-web:build:development" } }, "defaultConfiguration": "development" }
       }
     }
