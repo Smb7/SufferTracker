@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Preferences } from './models';
-import { tap } from 'rxjs';
+import { switchMap, tap } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class PreferencesService {
@@ -9,5 +9,9 @@ export class PreferencesService {
   constructor(private readonly http: HttpClient) {}
   get() { return this.http.get<Preferences>(this.endpoint); }
   update(preferences: Preferences) { return this.http.put<Preferences>(this.endpoint, preferences).pipe(tap(value => this.applyTheme(value.darkMode))); }
+  /** Persists only the dashboard layout choice against freshly read server state, leaving darkMode/interviewRounds untouched. */
+  updateDefaultView(defaultView: string) {
+    return this.get().pipe(switchMap(current => this.http.put<Preferences>(this.endpoint, { ...current, defaultView }).pipe(tap(() => this.applyTheme(current.darkMode)))));
+  }
   applyTheme(dark: boolean): void { document.documentElement.classList.toggle('dark', dark); }
 }

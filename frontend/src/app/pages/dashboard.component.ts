@@ -42,9 +42,8 @@ export class DashboardComponent implements OnInit {
   }
   selectView(key: string): void {
     this.visualizer = key;
-    if (!this.prefs || this.prefs.defaultView === key) return;
-    const updated = { ...this.prefs, defaultView: key };
-    this.preferences.update(updated).subscribe(value => this.prefs = value);
+    if (this.prefs?.defaultView === key) return;
+    this.preferences.updateDefaultView(key).subscribe({ next: value => this.prefs = value, error: () => {} });
   }
   get greeting(): string { const hour = new Date().getHours(); return hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'; }
   get firstName(): string { return this.auth.user()?.displayName.split(' ')[0] || 'there'; }
