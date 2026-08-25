@@ -18,8 +18,11 @@ jobs:
         run: dotnet restore JobTracker.sln
       - name: Build
         run: dotnet build JobTracker.sln --configuration Release --no-restore
-      - name: Unit tests with coverage
-        run: dotnet test src/JobTracker.Tests/JobTracker.Tests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+      - name: Unit tests with coverage gate
+        run: >
+          dotnet test src/JobTracker.Tests/JobTracker.Tests.csproj --configuration Release --no-build
+          -p:CollectCoverage=true -p:CoverletOutputFormat=cobertura
+          -p:Threshold=15 -p:ThresholdType=line -p:ThresholdStat=total
   frontend:
     runs-on: ubuntu-latest
     steps:
