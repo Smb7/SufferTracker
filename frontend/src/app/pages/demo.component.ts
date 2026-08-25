@@ -55,7 +55,7 @@ export class DemoComponent implements OnInit {
   applicationsThisWeek: number | null = null;
   constructor(private readonly http: HttpClient) {}
   ngOnInit(): void {
-    this.http.get<{ applicationsThisWeek: number }>('http://localhost:8080/api/stats/public').subscribe({
+    this.http.get<{ applicationsThisWeek: number }>('/api/stats/public').subscribe({
       next: stats => this.applicationsThisWeek = stats.applicationsThisWeek > 0 ? stats.applicationsThisWeek : null,
       error: () => this.applicationsThisWeek = null
     });

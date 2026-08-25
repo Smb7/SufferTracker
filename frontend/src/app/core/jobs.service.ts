@@ -4,7 +4,7 @@ import { Job, JobStatus, ParsedJob } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class JobsService {
-  private readonly endpoint = 'http://localhost:8080/api/jobs';
+  private readonly endpoint = '/api/jobs';
   constructor(private readonly http: HttpClient) {}
   list() { return this.http.get<Job[]>(this.endpoint); }
   parseText(text: string) { const body = new FormData(); body.set('inputType', 'Text'); body.set('text', text); return this.http.post<ParsedJob>(`${this.endpoint}/parse`, body); }

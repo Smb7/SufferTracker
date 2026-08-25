@@ -15,7 +15,7 @@ export class LoginComponent {
   applicationsThisWeek: number | null = null;
   constructor(private readonly auth: AuthService, private readonly http: HttpClient, private readonly router: Router, route: ActivatedRoute) {
     this.registerMode = route.snapshot.queryParamMap.get('register') === 'true';
-    this.http.get<{ applicationsThisWeek: number }>('http://localhost:8080/api/stats/public').subscribe({
+    this.http.get<{ applicationsThisWeek: number }>('/api/stats/public').subscribe({
       next: stats => this.applicationsThisWeek = stats.applicationsThisWeek,
       error: () => this.applicationsThisWeek = null
     });
