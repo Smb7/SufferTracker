@@ -18,6 +18,8 @@ builder.Services.AddHttpClient<IJobParser, JobParserService>(client =>
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("SufferTracker/1.0 job parser");
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient("page-fetch").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = true });
+
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<ITotpService, TotpService>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();

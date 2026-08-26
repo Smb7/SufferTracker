@@ -3,14 +3,35 @@ using JobTracker.Api.Models;
 using JobTracker.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Net.Http;
 
 namespace JobTracker.Api.Controllers;
 
 [ApiController, Authorize, Route("api/jobs/parse")]
-public sealed class ParsingController(IJobParser parser) : ControllerBase
+public sealed class ParsingController(IJobParser parser, IHttpClientFactory httpClientFactory) : ControllerBase
 {
     private const long MaxImageBytes = 10 * 1024 * 1024;
     private static readonly string[] SupportedImageTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    [HttpGet("fetch-page")]
+    public async Task<IActionResult> FetchPage([FromQuery] string url, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = await UrlGuard.ValidatePublicHttpUrlAsync(url, cancellationToken);
+            using var client = httpClientFactory.CreateClient("page-fetch");
+            client.Timeout = TimeSpan.FromSeconds(20);
+            using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            var mediaType = response.Content.Headers.ContentType?.MediaType;
+            if (mediaType is not null && !mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase) && mediaType != "application/xhtml+xml")
+                return BadRequest(new { message = "That URL is not an HTML page." });
+            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+            return Content(html, "text/html");
+        }
+        catch (ArgumentException exception) { return BadRequest(new { message = exception.Message }); }
+        catch (HttpRequestException exception) { return BadRequest(new { message = $"Could not fetch URL: {exception.Message}" }); }
+    }
 
     [HttpPost]
     [RequestSizeLimit(MaxImageBytes)]

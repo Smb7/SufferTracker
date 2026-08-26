@@ -14,7 +14,7 @@ public sealed class ParsingControllerTests
     public async Task Parse_RejectsPngWithInvalidFileSignature()
     {
         var parser = new RecordingParser();
-        var controller = new ParsingController(parser);
+        var controller = new ParsingController(parser, new StubHttpClientFactory());
         var image = CreateFile([0x01, 0x02, 0x03], "image/png", "posting.png");
 
         var result = await controller.Parse(new ParseJobRequest(InputType.Screenshot, null, null), image, CancellationToken.None);
@@ -27,7 +27,7 @@ public sealed class ParsingControllerTests
     public async Task Parse_ForwardsValidPngToParser()
     {
         var parser = new RecordingParser();
-        var controller = new ParsingController(parser);
+        var controller = new ParsingController(parser, new StubHttpClientFactory());
         var pngHeader = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
         var image = CreateFile(pngHeader, "image/png", "posting.png");
 
@@ -44,6 +44,11 @@ public sealed class ParsingControllerTests
             Headers = new HeaderDictionary { ["Content-Type"] = contentType }
         };
         return formFile;
+    }
+
+    private sealed class StubHttpClientFactory : System.Net.Http.IHttpClientFactory
+    {
+        public System.Net.Http.HttpClient CreateClient(string name) => new();
     }
 
     private sealed class RecordingParser : IJobParser

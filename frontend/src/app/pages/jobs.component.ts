@@ -1,4 +1,6 @@
 import { Component, HostListener, OnInit } from '@angular/core';
+import { recognize } from 'tesseract.js';
+import { firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgFor, NgIf } from '@angular/common';
 import { Job, JobStatus, ParsedJob } from '../core/models';
@@ -12,7 +14,7 @@ interface EditModel {
 
 @Component({ standalone: true, imports: [FormsModule, NgFor, NgIf, DatePipe], template: `
   <header class="page-header"><div><div class="eyebrow">Your workspace</div><h1>Applications</h1><p class="subtle">Turn every opportunity into a next step.</p></div><button class="primary-button" (click)="showCapture = !showCapture">+ Capture job</button></header>
-  <section class="capture panel" *ngIf="showCapture"><div class="capture-intro"><div class="eyebrow">New application</div><h2>Start with the messy bit.</h2><p>Paste a link, drop in the description text, or upload a screenshot. We will pull out the useful parts for you to review.</p></div><div class="capture-body"><div class="capture-tabs"><button [class.selected]="captureMode === 'text'" (click)="captureMode = 'text'">Paste text</button><button [class.selected]="captureMode === 'link'" (click)="captureMode = 'link'">Job link</button><button [class.selected]="captureMode === 'screenshot'" (click)="captureMode = 'screenshot'">Screenshot OCR</button></div><textarea *ngIf="captureMode === 'text'" [(ngModel)]="rawText" placeholder="Paste job description text here..."></textarea><input *ngIf="captureMode === 'link'" class="link-input" [(ngModel)]="jobUrl" placeholder="https://www.linkedin.com/jobs/view/..."><label class="file-picker" *ngIf="captureMode === 'screenshot'">Choose a screenshot or press ⌘/Ctrl+V<input type="file" accept="image/png,image/jpeg,image/webp" (change)="selectImage($event)"><small>{{ screenshot ? screenshot.name : 'PNG, JPG, or WebP · 10 MB max · paste supported' }}</small></label><button class="primary-button" (click)="parse()" [disabled]="parsing">{{ parsing ? 'Reading...' : 'Parse details →' }}</button></div><div class="form-error" *ngIf="message">{{ message }}</div><div class="parsed-card" *ngIf="parsed"><div class="eyebrow">Review extracted details</div><h3>{{ parsed.title }} <span>at {{ parsed.company }}</span></h3><p>{{ parsed.location }} · {{ parsed.pay }}</p><label>Nickname <small>Optional, for quick filtering.</small><input [(ngModel)]="parsedNickname" placeholder="e.g. Dream gig"></label><button class="secondary-button" (click)="saveParsed()">Save application</button></div></section>
+  <section class="capture panel" *ngIf="showCapture"><div class="capture-intro"><div class="eyebrow">New application</div><h2>Start with the messy bit.</h2><p>Paste a link, drop in the description text, or upload a screenshot. We will pull out the useful parts for you to review.</p></div><div class="capture-body"><div class="capture-tabs"><button [class.selected]="captureMode === 'text'" (click)="captureMode = 'text'">Paste text</button><button [class.selected]="captureMode === 'link'" (click)="captureMode = 'link'">Job link</button><button [class.selected]="captureMode === 'screenshot'" (click)="captureMode = 'screenshot'">Screenshot OCR</button></div><textarea *ngIf="captureMode === 'text'" [(ngModel)]="rawText" placeholder="Paste job description text here..."></textarea><input *ngIf="captureMode === 'link'" class="link-input" [(ngModel)]="jobUrl" placeholder="https://www.linkedin.com/jobs/view/..."><label class="file-picker" *ngIf="captureMode === 'screenshot'">Choose a screenshot or press ⌘/Ctrl+V<input type="file" accept="image/png,image/jpeg,image/webp" (change)="selectImage($event)"><small>{{ screenshot ? screenshot.name : 'PNG, JPG, or WebP · 10 MB max · paste supported' }}</small></label><div class="ocr-progress" *ngIf="ocrProgress !== null"><div class="bar-track"><div class="bar-fill orange" [style.width.%]="ocrProgress"></div></div><small>Reading image locally… {{ ocrProgress }}%</small></div><button class="primary-button" (click)="parse()" [disabled]="parsing">{{ parsing ? 'Reading...' : 'Parse details →' }}</button></div><div class="form-error" *ngIf="message">{{ message }}</div><div class="parsed-card" *ngIf="parsed"><div class="eyebrow">Review extracted details</div><h3>{{ parsed.title }} <span>at {{ parsed.company }}</span></h3><p>{{ parsed.location }} · {{ parsed.pay }}</p><label>Nickname <small>Optional, for quick filtering.</small><input [(ngModel)]="parsedNickname" placeholder="e.g. Dream gig"></label><button class="secondary-button" (click)="saveParsed()">Save application</button></div></section>
   <div class="filter-row"><div class="filter-tabs"><button *ngFor="let filter of filters" [class.selected]="activeFilter === filter" (click)="activeFilter = filter">{{ filter }} <small>{{ filterCount(filter) }}</small></button></div><input class="search-input" [(ngModel)]="search" placeholder="⌕  Search applications"></div>
   <section class="job-list panel"><div class="list-head"><span>Company / role</span><span>Stage</span><span>Applied</span><span></span></div><div class="job-row" *ngFor="let job of visibleJobs"><div class="company-cell"><span class="company-logo">{{ job.company[0] }}</span><div><strong>{{ job.company }}</strong><p>{{ job.title }}<span *ngIf="job.nickname"> · {{ job.nickname }}</span></p></div></div><select class="status-select" [class]="job.status.toLowerCase()" [ngModel]="job.status" (ngModelChange)="changeStatus(job, $event)" [attr.aria-label]="'Status for ' + job.company"><option *ngFor="let status of statuses" [value]="status">{{ label(status) }}<ng-container *ngIf="status === 'Interview' && job.interviewRound"> {{ job.interviewRound }}</ng-container></option></select><time>{{ job.appliedAtUtc | date:'MMM d, y' }}</time><span class="row-actions"><button class="icon-button" title="Edit application" (click)="openEdit(job)">✎</button><button class="icon-button" title="Delete application" (click)="remove(job)">×</button></span></div><div class="empty-state" *ngIf="!visibleJobs.length">No applications match this view.</div></section>
   <div class="modal-backdrop" *ngIf="editing" (click)="closeEdit()">
@@ -41,11 +43,39 @@ export class JobsComponent implements OnInit {
   filters = ['All', 'Applied', 'Interview', 'Job offer', 'Ghosted', 'Rejected'];
   statuses: JobStatus[] = ['Applied', 'Interview', 'JobOffer', 'Ghosted', 'Rejected'];
   rounds: number[] = Array.from({ length: 10 }, (_, index) => index + 1);
-  editing: Job | null = null; editModel!: EditModel;
+  editing: Job | null = null; editModel!: EditModel; ocrProgress: number | null = null;
   constructor(private readonly service: JobsService, private readonly preferences: PreferencesService) {}
   ngOnInit(): void { this.refresh(); this.preferences.get().subscribe(value => this.rounds = Array.from({ length: value.interviewRounds }, (_, index) => index + 1)); }
   get visibleJobs(): Job[] { return this.jobs.filter(job => (this.activeFilter === 'All' || this.label(job.status) === this.activeFilter) && `${job.company} ${job.title} ${job.nickname}`.toLowerCase().includes(this.search.toLowerCase())); }
-  selectImage(event: Event): void { const input = event.target as HTMLInputElement; this.screenshot = input.files?.[0] ?? null; this.message = ''; }
+  selectImage(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    if (file) void this.recognizeLocally(file);
+  }
+
+  /** Runs Tesseract.js in the browser; falls back to the server OCR endpoint on failure. */
+  async recognizeLocally(file: File): Promise<void> {
+    this.ocrProgress = 0;
+    try {
+      const result = await recognize(file, 'eng', {
+        logger: message => { if (message.status === 'recognizing text') this.ocrProgress = Math.round(message.progress * 100); }
+      });
+      const text = result.data.text.trim();
+      if (!text) throw new Error('empty');
+      this.rawText = text;
+      this.captureMode = 'text';
+      this.ocrProgress = null;
+      this.parse();
+    } catch {
+      this.ocrProgress = null;
+      this.message = 'Local OCR unavailable — sending the image to the server instead.';
+      this.parsing = true;
+      this.service.parseScreenshot(file).subscribe({
+        next: value => { this.parsed = value; this.parsing = false; },
+        error: () => { this.parsing = false; this.message = 'OCR failed. Check the image and provider configuration.'; }
+      });
+    }
+  }
   @HostListener('document:paste', ['$event'])
   onPaste(event: ClipboardEvent): void {
     if (!this.showCapture) return;
@@ -57,14 +87,15 @@ export class JobsComponent implements OnInit {
     event.preventDefault();
     const extension = imageItem.type.split('/')[1]?.toLowerCase() ?? 'png';
     this.screenshot = new File([file], file.name || `pasted-screenshot.${extension}`, { type: imageItem.type });
-    this.captureMode = 'screenshot';
+    this.showCapture = true;
     this.message = '';
+    void this.recognizeLocally(this.screenshot);
   }
   parse(): void {
     if (this.captureMode === 'link') {
       if (!/^https?:\/\//i.test(this.jobUrl.trim())) { this.message = 'Enter a full URL starting with http:// or https://.'; return; }
       this.parsing = true; this.message = '';
-      this.service.parseLink(this.jobUrl.trim()).subscribe({ next: value => { this.parsed = value; this.parsing = false; }, error: () => { this.message = 'Could not read that link. Try pasting the text instead.'; this.parsing = false; } });
+      (async () => { try { const value = await this.service.parseLinkSmart(this.jobUrl.trim()); this.parsed = value; this.parsing = false; } catch { this.message = 'Could not read that link. Try pasting the text instead.'; this.parsing = false; } })();
       return;
     }
     if (this.captureMode === 'screenshot') {
