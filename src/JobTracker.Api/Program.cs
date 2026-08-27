@@ -3,6 +3,7 @@ using JobTracker.Api.Data;
 using JobTracker.Api.Models;
 using JobTracker.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -25,9 +26,22 @@ builder.Services.AddHttpClient("page-fetch", client =>
     client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = true });
 
+builder.Services.AddHttpClient("geoip", client =>
+{
+    client.BaseAddress = new Uri("http://ip-api.com/");
+    client.Timeout = TimeSpan.FromSeconds(2);
+});
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<ITotpService, TotpService>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddScoped<IGeoIpLookup, GeoIpLookup>();
+builder.Services.AddScoped<ILoginAudit, LoginAudit>();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
@@ -52,9 +66,18 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
-    await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+    var emails = app.Configuration.GetSection("Admin:Emails").Get<string[]>() ?? [];
+    foreach (var email in emails.Select(item => item.Trim().ToLowerInvariant()).Where(item => item.Length > 0))
+    {
+        var user = await db.Users.SingleOrDefaultAsync(item => item.Email == email);
+        if (user is not null && !user.IsAdmin) user.IsAdmin = true;
+    }
+    await db.SaveChangesAsync();
 }
 if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
+app.UseForwardedHeaders();
 app.UseCors("frontend");
 app.UseAuthentication();
 app.UseAuthorization();

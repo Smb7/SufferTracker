@@ -9,6 +9,8 @@ import { RegisterComponent } from './pages/register.component';
 import { DashboardComponent } from './pages/dashboard.component';
 import { JobsComponent } from './pages/jobs.component';
 import { SettingsComponent } from './pages/settings.component';
+import { AdminComponent } from './pages/admin.component';
+import { adminGuard } from './core/admin.guard';
 
 const authenticatedMatch = () => inject(AuthService).token !== null;
 
@@ -17,7 +19,8 @@ export const routes: Routes = [
     { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     { path: 'dashboard', component: DashboardComponent },
     { path: 'jobs', component: JobsComponent },
-    { path: 'settings', component: SettingsComponent }
+    { path: 'settings', component: SettingsComponent },
+    { path: 'admin', component: AdminComponent, canActivate: [adminGuard] }
   ]},
   { path: '', component: DemoComponent, pathMatch: 'full' },
   { path: 'login', component: LoginComponent },

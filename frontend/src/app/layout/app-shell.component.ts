@@ -1,9 +1,10 @@
 import { Component } from '@angular/core';
+import { NgIf } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 
 @Component({
-  standalone: true, imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  standalone: true, imports: [NgIf, RouterLink, RouterLinkActive, RouterOutlet],
   template: `
     <div class="app-frame">
       <aside class="sidebar">
@@ -13,6 +14,7 @@ import { AuthService } from '../core/auth.service';
           <a routerLink="/dashboard" routerLinkActive="active"><span class="nav-icon">◈</span> Overview</a>
           <a routerLink="/jobs" routerLinkActive="active"><span class="nav-icon">□</span> Applications</a>
           <a routerLink="/settings" routerLinkActive="active"><span class="nav-icon">⚙</span> Settings</a>
+          <a *ngIf="auth.user()?.isAdmin" routerLink="/admin" routerLinkActive="active"><span class="nav-icon">▣</span> Admin</a>
         </nav>
         <div class="sidebar-bottom">
           <div class="mini-tip"><span class="tip-dot"></span><div><strong>Keep moving</strong><small>Every no is data.</small></div></div>

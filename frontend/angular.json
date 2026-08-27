@@ -18,11 +18,13 @@
             ],
             "assets": [],
             "styles": [
-              "src/styles.css"
+              "src/styles.css",
+              "node_modules/leaflet/dist/leaflet.css"
             ],
             "allowedCommonJsDependencies": [
               "tesseract.js",
-              "@mozilla/readability"
+              "@mozilla/readability",
+              "leaflet"
             ]
           },
           "configurations": {

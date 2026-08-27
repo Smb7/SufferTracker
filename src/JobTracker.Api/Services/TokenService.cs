@@ -13,12 +13,13 @@ public sealed class TokenService(IConfiguration configuration) : ITokenService
         var settings = configuration.GetSection("Jwt");
         var key = settings["Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
         var credentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)), SecurityAlgorithms.HmacSha256);
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim("display_name", user.DisplayName)
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, user.Email),
+            new("display_name", user.DisplayName)
         };
+        if (user.IsAdmin) claims.Add(new Claim(ClaimTypes.Role, "Admin"));
         var token = new JwtSecurityToken(
             issuer: settings["Issuer"],
             audience: settings["Audience"],
