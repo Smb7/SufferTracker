@@ -123,60 +123,73 @@ export function bucketSegments(buckets: StackBucket[], bucket: StackBucket): { c
 
 export interface SankeyNode { x: number; y: number; h: number; color: string; label: string; count: number; }
 export interface SankeyRibbon { d: string; color: string; }
-export interface SankeyLayout { nodes: SankeyNode[]; ribbons: SankeyRibbon[]; height: number; }
+export interface SankeyLayout { nodes: SankeyNode[]; ribbons: SankeyRibbon[]; height: number; width: number; }
 
-export function sankeyLayout(jobs: ChartJob[]): SankeyLayout {
-  const height = 220; const width = 640; const nodeWidth = 110; const leftX = 16; const rightX = width - nodeWidth - 16;
-  const outcomes = [
-    { label: 'Applied', count: countOf(jobs, 'Applied'), color: STATUS_COLORS['Applied'] },
-    { label: 'Interview', count: countOf(jobs, 'Interview'), color: STATUS_COLORS['Interview'] },
-    { label: 'Offer', count: countOf(jobs, 'JobOffer'), color: STATUS_COLORS['JobOffer'] },
-    { label: 'Rejected', count: countOf(jobs, 'Rejected'), color: STATUS_COLORS['Rejected'] },
-    { label: 'Ghosted', count: countOf(jobs, 'Ghosted'), color: STATUS_COLORS['Ghosted'] }
-  ];
+/** Builds a left-to-right flow: Applied -> Interview 1..N -> Offer/Rejected/Ghosted,
+ *  with one interview stage per configured round. */
+export function sankeyLayout(jobs: ChartJob[], interviewRounds = 3): SankeyLayout {
   const total = Math.max(1, jobs.length);
-  const available = height - (outcomes.length - 1) * 10;
-  const rawHeights = outcomes.map(outcome => (outcome.count / total) * available);
-  const scaled = scaleWithMinimum(rawHeights, 16, available);
+  const maxRound = Math.max(1, interviewRounds, ...jobs.map(job => job.interviewRound ?? 0));
+  const reached = (round: number) => jobs.filter(job => (job.interviewRound ?? 0) >= round).length;
+  const offer = countOf(jobs, 'JobOffer');
+  const rejected = countOf(jobs, 'Rejected');
+  const ghosted = countOf(jobs, 'Ghosted');
 
-  let offsetRight = 0;
+  const height = 240;
+  const topPad = 16; const bottomPad = 16; const avail = height - topPad - bottomPad;
+  const nodeWidth = 72; const gap = 24;
+  const colCount = maxRound + 2; // Applied + interviews + outcomes
+  const width = 16 * 2 + colCount * nodeWidth + (colCount - 1) * gap;
+  const xFor = (col: number) => 16 + col * (nodeWidth + gap);
+  const hFor = (count: number) => Math.max(12, (count / total) * avail);
+
   const nodes: SankeyNode[] = [];
-  const slices: { top: number; bottom: number }[] = [];
-  outcomes.forEach((outcome, index) => {
-    nodes.push({ x: rightX, y: offsetRight, h: scaled[index], color: outcome.color, label: outcome.label, count: outcome.count });
-    slices.push({ top: offsetRight, bottom: offsetRight + scaled[index] });
-    offsetRight += scaled[index] + 10;
-  });
+  nodes.push({ x: xFor(0), y: topPad, h: avail, color: STATUS_COLORS['Applied'], label: 'Applied', count: jobs.length });
+  for (let round = 1; round <= maxRound; round++) {
+    const count = reached(round);
+    const h = hFor(count);
+    nodes.push({ x: xFor(round), y: topPad + (avail - h) / 2, h, color: STATUS_COLORS['Interview'], label: `Interview ${round}`, count });
+  }
 
-  const stackHeight = Math.max(1, offsetRight - 10);
-  const leftNodeHeight = Math.max(48, stackHeight);
-  const leftY = Math.max(0, (height - leftNodeHeight) / 2);
-  nodes.unshift({ x: leftX, y: leftY, h: leftNodeHeight, color: '#20201f', label: 'Applied', count: jobs.length });
+  const outcomeDefs = [
+    { label: 'Offer', count: offer, color: STATUS_COLORS['JobOffer'] },
+    { label: 'Rejected', count: rejected, color: STATUS_COLORS['Rejected'] },
+    { label: 'Ghosted', count: ghosted, color: STATUS_COLORS['Ghosted'] }
+  ];
+  const outcomeTotal = Math.max(1, offer + rejected + ghosted);
+  const outcomeNodes: SankeyNode[] = [];
+  let oy = topPad;
+  for (const outcome of outcomeDefs) {
+    const h = Math.max(12, (outcome.count / outcomeTotal) * avail);
+    outcomeNodes.push({ x: xFor(maxRound + 1), y: oy, h, color: outcome.color, label: outcome.label, count: outcome.count });
+    oy += h;
+  }
+  nodes.push(...outcomeNodes);
 
-  const ribbons: SankeyRibbon[] = outcomes.map((_, index) => {
-    const share = ((slices[index].bottom - slices[index].top) / stackHeight) * leftNodeHeight;
-    const sliceTop = slices.slice(0, index).reduce((sum, slice) => sum + (slice.bottom - slice.top), 0) / stackHeight * leftNodeHeight;
-    const midX = (leftX + nodeWidth + rightX) / 2;
-    const d = `M ${leftX + nodeWidth},${round(sliceTop)} C ${midX},${round(sliceTop)} ${midX},${round(slices[index].top)} ${rightX},${round(slices[index].top)} L ${rightX},${round(slices[index].bottom)} C ${midX},${round(slices[index].bottom)} ${midX},${round(sliceTop + share)} ${leftX + nodeWidth},${round(sliceTop + share)} Z`;
-    return { d, color: outcomes[index].color };
-  });
-  return { nodes, ribbons, height };
+  const ribbons: SankeyRibbon[] = [];
+  const ribbon = (source: SankeyNode, sourceTop: number, sourceBottom: number, target: SankeyNode) => {
+    const midX = (source.x + nodeWidth + target.x) / 2;
+    const d = `M ${source.x + nodeWidth},${round(sourceTop)} C ${midX},${round(sourceTop)} ${midX},${round(target.y)} ${target.x},${round(target.y)} L ${target.x},${round(target.y + target.h)} C ${midX},${round(target.y + target.h)} ${midX},${round(sourceBottom)} ${source.x + nodeWidth},${round(sourceBottom)} Z`;
+    ribbons.push({ d, color: target.color });
+  };
+
+  ribbon(nodes[0], nodes[0].y, nodes[0].y + nodes[0].h, nodes[1]); // Applied -> Interview 1
+  for (let round = 1; round < maxRound; round++)
+    ribbon(nodes[round], nodes[round].y, nodes[round].y + nodes[round].h, nodes[round + 1]);
+
+  const lastInterview = nodes[maxRound];
+  let shareTop = lastInterview.y;
+  for (const outcome of outcomeNodes) {
+    const shareHeight = (outcome.count / outcomeTotal) * lastInterview.h;
+    ribbon(lastInterview, shareTop, shareTop + shareHeight, outcome);
+    shareTop += shareHeight;
+  }
+
+  return { nodes, ribbons, height, width };
 }
 
 function round(value: number): number { return Math.round(value * 100) / 100; }
 function startOfDay(time: number): number { const date = new Date(time); date.setHours(0, 0, 0, 0); return date.getTime(); }
 function startOfWeek(time: number): number { const date = new Date(time); return startOfDay(date.getTime()) - ((date.getDay() + 6) % 7) * 86400000; }
 function monthKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; }
-function scaleWithMinimum(raw: number[], minimum: number, available: number): number[] {
-  const clamped = raw.map(value => Math.max(minimum, value));
-  let overflow = clamped.reduce((sum, value) => sum + value, 0) - available;
-  if (overflow <= 0) return clamped;
-  const flexible = clamped.map((value, index) => ({ value, index })).filter(item => item.value > minimum + 1);
-  const flexTotal = flexible.reduce((sum, item) => sum + item.value, 0);
-  for (const item of flexible) {
-    const cut = Math.min(clamped[item.index] - minimum, overflow * (clamped[item.index] / Math.max(1, flexTotal)));
-    clamped[item.index] -= cut;
-    overflow -= cut;
-  }
-  return clamped;
-}
+

@@ -102,7 +102,7 @@ function generateSampleJobs(): DemoJob[] {
           <p class="subtle flow-footnote">Drag cards between columns to update a status. Interview splits into configurable rounds.</p>
         }
         @case ('Sankey flow') {
-          <svg class="sankey-figure" [attr.viewBox]="'0 0 640 ' + sankey.height" role="img" aria-label="Sample application flow sankey diagram">
+          <svg class="sankey-figure" [attr.viewBox]="'0 0 ' + sankey.width + ' ' + sankey.height" role="img" aria-label="Sample application flow sankey diagram">
             <path *ngFor="let ribbon of sankey.ribbons" [attr.d]="ribbon.d" [attr.fill]="ribbon.color" opacity=".3"/>
             <g *ngFor="let node of sankey.nodes">
               <rect [attr.x]="node.x" [attr.y]="node.y" width="110" [attr.height]="node.h" rx="6" [attr.fill]="node.color" opacity=".85"/>
@@ -167,6 +167,6 @@ export class DemoShowcaseComponent {
   get cumulative() { return cumulativeSeries(this.sampleJobs); }
   get buckets() { return stackBuckets(this.sampleJobs, 'week'); }
   segments(bucket: ReturnType<typeof stackBuckets>[number]) { return bucketSegments(this.buckets, bucket); }
-  get sankey() { return sankeyLayout(this.sampleJobs); }
+  get sankey() { return sankeyLayout(this.sampleJobs, 3); }
   get legend() { return Object.keys(STATUS_COLORS).map(status => ({ label: status === 'JobOffer' ? 'Job offer' : status, color: STATUS_COLORS[status] })); }
 }
