@@ -263,6 +263,7 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
             }
         }
 
+        var titleIndex = TitleLineIndex(lines);
         for (var index = 0; index < lines.Length && index < 10; index++)
         {
             var line = lines[index].Trim().TrimEnd('.');
@@ -278,18 +279,40 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
 
             var hasSuffix = CompanySuffixes.Any(suffix =>
                 line.Equals(suffix, StringComparison.OrdinalIgnoreCase) || line.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase));
-            var directlyAfterTitle = index is 1 or 2;
-            if (!hasSuffix && !directlyAfterTitle) continue;
+            var nearTitle = index != titleIndex && index >= titleIndex - 1 && index <= titleIndex + 2;
+            if (!hasSuffix && !nearTitle) continue;
 
             var candidate = NormalizeCompany(line);
             if (candidate is not null) return candidate;
         }
+
+        foreach (var line in lines.Take(6))
+        {
+            var parenthetical = ParentheticalCompanyRegex().Match(line);
+            if (!parenthetical.Success) continue;
+            var candidate = NormalizeCompany(parenthetical.Groups[1].Value);
+            if (candidate is not null && !ParentheticalBlocklist.Contains(candidate)) return candidate;
+        }
         return null;
+    }
+
+    private static int TitleLineIndex(string[] lines)
+    {
+        for (var index = 0; index < lines.Length && index < 4; index++)
+        {
+            var line = lines[index];
+            if (line.Length <= 90 && TitleKeywords.Any(keyword => line.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                return index;
+        }
+        return 0;
     }
 
     private static string? NormalizeCompany(string candidate)
     {
         var value = System.Net.WebUtility.HtmlDecode(candidate).Trim(" .,!-–—|()[]".ToCharArray());
+        foreach (var suffix in new[] { "Careers", "Jobs", "Hiring", "Team", "Careers Site" })
+            if (value.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase))
+                value = value[..^(suffix.Length + 1)].Trim();
         if (value.Length is < 2 or > 48) return null;
         if (value.Any(char.IsDigit)) return null;
         if (CompanyBlocklist.Contains(value)) return null;
@@ -339,6 +362,17 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
         "role", "the role", "this role", "the job", "job", "the company", "company", "us", "the team",
         "our team", "our", "you", "them", "we", "they", "i", "the position", "position", "join", "team"
     };
+
+    private static readonly HashSet<string> ParentheticalBlocklist = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "remote", "hybrid", "onsite", "on-site", "on site", "us", "usa", "united states", "canada", "uk",
+        "full-time", "full time", "part-time", "part time", "contract", "temporary", "senior", "junior",
+        "sr", "jr", "mid-level", "lead", "manager", "director", "principal", "staff", "nyc", "sf", "la",
+        "bay area", "austin", "seattle", "redmond", "new york", "global", "worldwide", "us only", "us-only"
+    };
+
+    [GeneratedRegex(@"\(\s*([A-Z][A-Za-z0-9&.'\- ]{2,30})\s*\)")]
+    private static partial Regex ParentheticalCompanyRegex();
 
     private static string? ExtractLocation(string text)
     {
