@@ -26,7 +26,7 @@ interface EditModel {
         <label>Job title<input [(ngModel)]="editModel.title"></label>
         <label>Nickname <small>Optional, for quick filtering.</small><input [(ngModel)]="editModel.nickname" placeholder="e.g. Dream gig"></label>
         <label>Status <small *ngIf="!offerUnlocked(editing)">Record an interview to unlock 'Job offer'.</small><select [(ngModel)]="editModel.status"><option *ngFor="let status of statuses" [value]="status" [disabled]="status === 'JobOffer' && !offerUnlocked(editing)">{{ label(status) }}</option></select></label>
-        <label *ngIf="editModel.status === 'Interview'">Interview round<strong class="range-value">{{ editModel.interviewRound }}</strong><select [(ngModel)]="editModel.interviewRound"><option *ngFor="let n of rounds" [ngValue]="n">{{ n }}</option></select></label>
+        <div class="interview-rounds" *ngIf="editModel.status === 'Interview'"><div class="eyebrow">Interview rounds · {{ roundsDoneLabel }}</div><label class="round-check" *ngFor="let r of rounds; let i = index" [class.checked]="editRoundsDone[i]" (click)="markRound(i)">Round {{ r }}</label></div>
         <label>Pay<input [(ngModel)]="editModel.pay" placeholder="e.g. $120k"></label>
         <label>Location<input [(ngModel)]="editModel.location" placeholder="e.g. Remote"></label>
         <label>Applied date<input type="date" [(ngModel)]="editModel.appliedDate"></label>
@@ -43,7 +43,7 @@ export class JobsComponent implements OnInit {
   filters = ['All', 'Applied', 'Interview', 'Job offer', 'Ghosted', 'Rejected'];
   statuses: JobStatus[] = ['Applied', 'Interview', 'JobOffer', 'Ghosted', 'Rejected'];
   rounds: number[] = Array.from({ length: 10 }, (_, index) => index + 1);
-  editing: Job | null = null; editModel!: EditModel; ocrProgress: number | null = null;
+  editing: Job | null = null; editModel!: EditModel; editRoundsDone: boolean[] = []; ocrProgress: number | null = null;
   constructor(private readonly service: JobsService, private readonly preferences: PreferencesService) {}
   ngOnInit(): void { this.refresh(); this.preferences.get().subscribe(value => this.rounds = Array.from({ length: value.interviewRounds }, (_, index) => index + 1)); }
   get visibleJobs(): Job[] { return this.jobs.filter(job => (this.activeFilter === 'All' || this.label(job.status) === this.activeFilter) && `${job.company} ${job.title} ${job.nickname}`.toLowerCase().includes(this.search.toLowerCase())); }
@@ -128,13 +128,24 @@ export class JobsComponent implements OnInit {
   openEdit(job: Job): void {
     this.editing = job; this.message = '';
     this.editModel = { company: job.company, title: job.title, description: job.description, skills: job.skills, pay: job.pay, location: job.location, nickname: job.nickname, status: job.status, interviewRound: job.interviewRound ?? 1, appliedDate: job.appliedAtUtc.slice(0, 10) };
+    const reached = job.interviewRound ?? 0;
+    this.editRoundsDone = this.rounds.map((_, index) => index < reached);
+  }
+  markRound(index: number): void {
+    if (this.editRoundsDone.length !== this.rounds.length) this.editRoundsDone = this.rounds.map(() => false);
+    for (let k = 0; k < this.editRoundsDone.length; k++) this.editRoundsDone[k] = k <= index;
+  }
+  get roundsDoneLabel(): string {
+    const count = this.editRoundsDone.filter(Boolean).length;
+    return count === 0 ? 'None recorded' : `Round ${count}`;
   }
   closeEdit(): void { this.editing = null; this.message = ''; }
   saveEdit(): void {
     const target = this.editing;
     if (!target) return;
     if (!this.editModel.company.trim() || !this.editModel.title.trim()) { this.message = 'Company and title are required.'; return; }
-    const payload = { ...this.editModel, statusEvents: target.statusEvents ?? [], interviewRound: this.editModel.status === 'Interview' ? Number(this.editModel.interviewRound || 1) : undefined, appliedAtUtc: this.editModel.appliedDate ? new Date(`${this.editModel.appliedDate}T00:00:00Z`).toISOString() : undefined };
+    const round = this.editRoundsDone.filter(Boolean).length;
+    const payload = { ...this.editModel, statusEvents: target.statusEvents ?? [], interviewRound: this.editModel.status === 'Interview' ? Math.max(1, round) : undefined, appliedAtUtc: this.editModel.appliedDate ? new Date(`${this.editModel.appliedDate}T00:00:00Z`).toISOString() : undefined };
     try {
       this.service.update(target.id, payload).subscribe({ next: updated => { Object.assign(target, updated); this.closeEdit(); }, error: error => this.message = error.error?.message ?? 'Could not save changes.' });
     } catch (error) {
