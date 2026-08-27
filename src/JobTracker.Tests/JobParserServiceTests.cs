@@ -226,6 +226,27 @@ public sealed class JobParserServiceTests
     }
 
     [Fact]
+    public void ParseText_SkipsOcrNoiseAndFindsRealTitle()
+    {
+        const string text = "[ ] [ ] v © SufferTracker/src/JobTracker\nX © can you only respec once in\nSoftware Engineer (Starlink)\nSpaceX\nRedmond, WA\n$140,000 - $180,000 a year";
+
+        var result = CreateParser().ParseText(text);
+
+        Assert.Equal("Software Engineer (Starlink)", result.Title);
+        Assert.Equal("SpaceX", result.Company);
+        Assert.Equal("Redmond, WA", result.Location);
+        Assert.Equal("$140,000 - $180,000 per year", result.Pay);
+    }
+
+    [Fact]
+    public void ParseText_ReturnsUntitledRoleForPureNoise()
+    {
+        var result = CreateParser().ParseText("[ ] [ ] v © SufferTracker/src/JobTracker\nX © respec\n[] → ←");
+
+        Assert.Equal("Untitled role", result.Title);
+    }
+
+    [Fact]
     public void ParseText_KeepsSafeDefaultsWhenHeuristicsFindNothing()
     {
         var result = CreateParser().ParseText("We are looking for someone great.");

@@ -218,12 +218,28 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
             if (role.Length is >= 3 and <= 80 && char.IsUpper(role[0])) return role;
         }
 
-        foreach (var line in lines.Take(3))
+        foreach (var line in lines.Take(8))
         {
-            if (line.Length <= 90 && TitleKeywords.Any(keyword => line.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+            if (line.Length <= 90 && IsCleanLine(line) && TitleKeywords.Any(keyword => line.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
                 return CleanTitle(line);
         }
-        return CleanTitle(lines.FirstOrDefault() ?? "Untitled role");
+
+        foreach (var line in lines.Take(8))
+        {
+            if (IsCleanLine(line)) return CleanTitle(line);
+        }
+        return "Untitled role";
+    }
+
+    private static bool IsCleanLine(string line)
+    {
+        if (line.Length is < 2 or > 100) return false;
+        if (line.Contains("SufferTracker", StringComparison.OrdinalIgnoreCase)) return false;
+        if (line.Contains("src/") || line.Contains("http://") || line.Contains("https://") || line.Contains("www.")) return false;
+        if (line.Any(character => NoiseSymbols.Contains(character))) return false;
+        if (line.Contains('[') || line.Contains(']') || line.Contains('{') || line.Contains('}')) return false;
+        if (line.Contains('\\') || line.Contains('_') || line.Contains('=')) return false;
+        return true;
     }
 
     private static string CleanTitle(string line)
@@ -341,6 +357,8 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
         value = value.Trim();
         return value.Length is >= 3 and <= 100 ? value : null;
     }
+
+    private const string NoiseSymbols = "©®™→←↑↓◈◆□·•";
 
     private static readonly string[] TitleKeywords =
     [
