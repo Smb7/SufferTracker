@@ -121,7 +121,7 @@ export function bucketSegments(buckets: StackBucket[], bucket: StackBucket): { c
     .filter(segment => segment.pct > 0);
 }
 
-export interface SankeyNode { x: number; y: number; h: number; color: string; label: string; count: number; }
+export interface SankeyNode { x: number; y: number; h: number; w: number; color: string; label: string; count: number; }
 export interface SankeyRibbon { d: string; color: string; }
 export interface SankeyLayout { nodes: SankeyNode[]; ribbons: SankeyRibbon[]; height: number; width: number; }
 
@@ -137,18 +137,18 @@ export function sankeyLayout(jobs: ChartJob[], interviewRounds = 3): SankeyLayou
 
   const height = 240;
   const topPad = 16; const bottomPad = 16; const avail = height - topPad - bottomPad;
-  const nodeWidth = 72; const gap = 24;
+  const nodeWidth = 96; const gap = 22;
   const colCount = maxRound + 2; // Applied + interviews + outcomes
   const width = 16 * 2 + colCount * nodeWidth + (colCount - 1) * gap;
   const xFor = (col: number) => 16 + col * (nodeWidth + gap);
   const hFor = (count: number) => Math.max(12, (count / total) * avail);
 
   const nodes: SankeyNode[] = [];
-  nodes.push({ x: xFor(0), y: topPad, h: avail, color: STATUS_COLORS['Applied'], label: 'Applied', count: jobs.length });
+  nodes.push({ x: xFor(0), y: topPad, h: avail, w: nodeWidth, color: STATUS_COLORS['Applied'], label: 'Applied', count: jobs.length });
   for (let round = 1; round <= maxRound; round++) {
     const count = reached(round);
     const h = hFor(count);
-    nodes.push({ x: xFor(round), y: topPad + (avail - h) / 2, h, color: STATUS_COLORS['Interview'], label: `Interview ${round}`, count });
+    nodes.push({ x: xFor(round), y: topPad + (avail - h) / 2, h, w: nodeWidth, color: STATUS_COLORS['Interview'], label: `Interview ${round}`, count });
   }
 
   const outcomeDefs = [
@@ -161,7 +161,7 @@ export function sankeyLayout(jobs: ChartJob[], interviewRounds = 3): SankeyLayou
   let oy = topPad;
   for (const outcome of outcomeDefs) {
     const h = Math.max(12, (outcome.count / outcomeTotal) * avail);
-    outcomeNodes.push({ x: xFor(maxRound + 1), y: oy, h, color: outcome.color, label: outcome.label, count: outcome.count });
+    outcomeNodes.push({ x: xFor(maxRound + 1), y: oy, h, w: nodeWidth, color: outcome.color, label: outcome.label, count: outcome.count });
     oy += h;
   }
   nodes.push(...outcomeNodes);
