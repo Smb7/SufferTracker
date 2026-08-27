@@ -19,11 +19,13 @@ export class SettingsComponent implements OnInit {
     { id: 'danger', label: 'Danger zone' }
   ];
   activeSection = 'profile';
-  constructor(private readonly auth: AuthService, private readonly preferenceService: PreferencesService) {}
+  constructor(private readonly auth: AuthService, private readonly preferenceService: PreferencesService) {
+    this.preferences.darkMode = preferenceService.theme() === 'dark';
+  }
   ngOnInit(): void {
     const user = this.auth.user();
     if (user) { this.email = user.email; this.displayName = user.displayName; }
-    this.preferenceService.get().subscribe({ next: value => { this.preferences = value; this.preferenceService.applyTheme(value.darkMode); } });
+    this.preferenceService.get().subscribe({ next: value => this.preferences = value });
     this.auth.mfaStatus().subscribe({ next: status => this.mfaEnabled = status.enabled });
   }
   scrollTo(sectionId: string): void {
