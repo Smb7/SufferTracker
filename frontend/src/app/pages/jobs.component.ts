@@ -1,5 +1,5 @@
 import { Component, HostListener, OnInit } from '@angular/core';
-import { recognize } from 'tesseract.js';
+import { createWorker } from 'tesseract.js';
 import { firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgFor, NgIf } from '@angular/common';
@@ -57,9 +57,14 @@ export class JobsComponent implements OnInit {
   async recognizeLocally(file: File): Promise<void> {
     this.ocrProgress = 0;
     try {
-      const result = await recognize(file, 'eng', {
+      const worker = await createWorker('eng', 1, {
+        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0',
         logger: message => { if (message.status === 'recognizing text') this.ocrProgress = Math.round(message.progress * 100); }
       });
+      const result = await worker.recognize(file);
+      await worker.terminate();
       const text = result.data.text.trim();
       if (!text) throw new Error('empty');
       this.rawText = text;

@@ -27,11 +27,12 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
             : ParseStatic(readable);
 
         var structured = TryExtractJobPosting(html);
+        var meta = ExtractMeta(html);
         var skills = FirstNonEmpty(parsed.Skills, string.IsNullOrWhiteSpace(parsed.Skills) ? ExtractSkills(FirstNonEmpty(structured?.Description, parsed.Description)) : null);
         return parsed with
         {
-            Title = structured?.Title ?? parsed.Title,
-            Company = structured?.Company ?? parsed.Company,
+            Title = FirstNonEmpty(structured?.Title, meta.Title, parsed.Title),
+            Company = FirstNonEmpty(structured?.Company, meta.Company, parsed.Company),
             Pay = structured?.Pay ?? parsed.Pay,
             Location = structured?.Location ?? parsed.Location,
             Description = FirstNonEmpty(parsed.Description, structured?.Description),
@@ -47,8 +48,8 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
             throw new ArgumentException("Job text is required.", nameof(text));
 
         var lines = text.Split(['\r', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        var title = FindValue(lines, "title", "role", "position") ?? ExtractTitle(lines);
-        var company = FindValue(lines, "company", "employer") ?? ExtractCompany(lines) ?? "Unknown company";
+        var title = FindValue(lines, "title", "role", "position") ?? ExtractTitle(text, lines);
+        var company = FindValue(lines, "company", "employer", "organization") ?? ExtractCompany(text, lines) ?? "Unknown company";
         var location = FindValue(lines, "location", "based in", "office") ?? ExtractLocation(text) ?? "Location not specified";
         var pay = FindValue(lines, "salary", "pay", "compensation") ?? ExtractPay(text) ?? "Pay not specified";
         var skills = FindValue(lines, "skills", "requirements", "technologies") ?? ExtractSkills(text);
@@ -116,7 +117,7 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
         if (element.ValueKind == JsonValueKind.Object)
         {
             if (element.TryGetProperty("@type", out var type) &&
-                (type.ValueKind == JsonValueKind.String && type.GetString()?.Equals("JobPosting", StringComparison.OrdinalIgnoreCase) == true))
+                IsJobPostingType(type))
                 return element;
             if (element.TryGetProperty("@graph", out var graph) && graph.ValueKind == JsonValueKind.Array)
                 foreach (var item in graph.EnumerateArray())
@@ -127,6 +128,15 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
             foreach (var item in element.EnumerateArray())
                 if (FindJobPosting(item) is { } found) return found;
         return null;
+    }
+
+    private static bool IsJobPostingType(JsonElement type)
+    {
+        if (type.ValueKind == JsonValueKind.String)
+            return type.GetString()?.Equals("JobPosting", StringComparison.OrdinalIgnoreCase) == true;
+        if (type.ValueKind == JsonValueKind.Array)
+            return type.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.String && item.GetString()?.Equals("JobPosting", StringComparison.OrdinalIgnoreCase) == true);
+        return false;
     }
 
     private static string? ReadOrganization(JsonElement posting)
@@ -199,33 +209,136 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
         return null;
     }
 
-    private static string ExtractTitle(string[] lines)
+    private static string ExtractTitle(string text, string[] lines)
     {
-        var first = lines.FirstOrDefault() ?? "Untitled role";
-        var pipeIndex = first.IndexOf('|');
-        if (pipeIndex > 0) first = first[..pipeIndex];
-        var atIndex = first.LastIndexOf(" at ", StringComparison.OrdinalIgnoreCase);
-        if (atIndex > 0) first = first[..atIndex];
-        return first.Length > 80 ? first[..80].Trim() : first.Trim();
+        var sentence = RoleSentenceRegex().Match(text);
+        if (sentence.Success)
+        {
+            var role = sentence.Groups[1].Value.Trim().TrimEnd('.', ',', ';');
+            if (role.Length is >= 3 and <= 80 && char.IsUpper(role[0])) return role;
+        }
+
+        foreach (var line in lines.Take(3))
+        {
+            if (line.Length <= 90 && TitleKeywords.Any(keyword => line.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                return CleanTitle(line);
+        }
+        return CleanTitle(lines.FirstOrDefault() ?? "Untitled role");
     }
 
-    private static string? ExtractCompany(string[] lines)
+    private static string CleanTitle(string line)
     {
-        foreach (var line in lines.Take(8))
+        var pipeIndex = line.IndexOf('|');
+        if (pipeIndex > 0) line = line[..pipeIndex];
+        var atIndex = line.LastIndexOf(" at ", StringComparison.OrdinalIgnoreCase);
+        if (atIndex > 0) line = line[..atIndex];
+        var dashIndex = line.LastIndexOf(" - ", StringComparison.Ordinal);
+        if (dashIndex > 0 && TitleKeywords.Any(keyword => line[..dashIndex].Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+            line = line[..dashIndex];
+        line = line.Trim().TrimEnd('-', '|');
+        return line.Length > 80 ? line[..80].Trim() : line;
+    }
+
+    private static string? ExtractCompany(string text, string[] lines)
+    {
+        foreach (var line in lines.Take(10))
         {
             var hiring = HiringLineRegex().Match(line);
-            if (hiring.Success) return System.Net.WebUtility.HtmlDecode(hiring.Groups[1].Value).Trim(" .-–—|".ToCharArray());
+            if (hiring.Success)
+            {
+                var candidate = NormalizeCompany(LeadingProperNouns(hiring.Groups[1].Value));
+                if (candidate is not null) return candidate;
+            }
             var join = JoinLineRegex().Match(line);
             if (join.Success)
             {
-                var candidate = LeadingProperNouns(join.Groups[1].Value);
-                if (!string.IsNullOrWhiteSpace(candidate)) return candidate;
+                var candidate = NormalizeCompany(LeadingProperNouns(join.Groups[1].Value));
+                if (candidate is not null) return candidate;
             }
             var about = AboutLineRegex().Match(line);
-            if (about.Success) return about.Groups[1].Value.Trim();
+            if (about.Success)
+            {
+                var candidate = NormalizeCompany(about.Groups[1].Value);
+                if (candidate is not null) return candidate;
+            }
+        }
+
+        for (var index = 0; index < lines.Length && index < 10; index++)
+        {
+            var line = lines[index].Trim().TrimEnd('.');
+            if (line.Length is < 2 or > 40) continue;
+            if (line.Contains('$') || line.Contains('·') || line.Contains('(') || line.Contains(')')) continue;
+            if (PlaceRegex().IsMatch(line) || RemoteRegex().IsMatch(line)) continue;
+            if (line.Contains('|') || line.Contains(" at ", StringComparison.OrdinalIgnoreCase)) continue;
+            if (line.StartsWith("join ", StringComparison.OrdinalIgnoreCase) || line.StartsWith("we ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("our ", StringComparison.OrdinalIgnoreCase) || line.StartsWith("the ", StringComparison.OrdinalIgnoreCase)) continue;
+            if (TitleKeywords.Any(keyword => line.Contains(keyword, StringComparison.OrdinalIgnoreCase))) continue;
+            if (line.Contains("full-time", StringComparison.OrdinalIgnoreCase) || line.Contains("part-time", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("contract", StringComparison.OrdinalIgnoreCase) || line.Contains("per year", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var hasSuffix = CompanySuffixes.Any(suffix =>
+                line.Equals(suffix, StringComparison.OrdinalIgnoreCase) || line.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase));
+            var directlyAfterTitle = index is 1 or 2;
+            if (!hasSuffix && !directlyAfterTitle) continue;
+
+            var candidate = NormalizeCompany(line);
+            if (candidate is not null) return candidate;
         }
         return null;
     }
+
+    private static string? NormalizeCompany(string candidate)
+    {
+        var value = System.Net.WebUtility.HtmlDecode(candidate).Trim(" .,!-–—|()[]".ToCharArray());
+        if (value.Length is < 2 or > 48) return null;
+        if (value.Any(char.IsDigit)) return null;
+        if (CompanyBlocklist.Contains(value)) return null;
+        if (value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length > 6) return null;
+        return value;
+    }
+
+    private sealed record MetaInfo(string? Title, string? Company);
+
+    private static MetaInfo ExtractMeta(string html)
+    {
+        var title = CleanMetaTitle(OgTitleRegex().Match(html) is { Success: true } ogTitle ? ogTitle.Groups[1].Value : TitleTagRegex().Match(html) is { Success: true } tag ? tag.Groups[1].Value : null);
+        var company = OgSiteNameRegex().Match(html) is { Success: true } siteName ? NormalizeCompany(siteName.Groups[1].Value) : null;
+        return new MetaInfo(title, company);
+    }
+
+    private static string? CleanMetaTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return null;
+        var value = System.Net.WebUtility.HtmlDecode(title).Trim();
+        value = WhitespaceRegex().Replace(value, " ");
+        var pipeIndex = value.IndexOf('|');
+        if (pipeIndex > 0) value = value[..pipeIndex];
+        var dashIndex = value.IndexOf(" - ", StringComparison.Ordinal);
+        if (dashIndex > 0) value = value[..dashIndex];
+        value = value.Trim();
+        return value.Length is >= 3 and <= 100 ? value : null;
+    }
+
+    private static readonly string[] TitleKeywords =
+    [
+        "engineer", "developer", "analyst", "manager", "designer", "architect", "scientist", "consultant",
+        "specialist", "coordinator", "director", "intern", "administrator", "representative", "accountant",
+        "recruiter", "associate", "principal", "staff", "technician", "strategist", "programmer", "devops",
+        "product manager", "program manager", "qa ", "sre", "data ", "support"
+    ];
+
+    private static readonly string[] CompanySuffixes =
+    [
+        "inc", "llc", "ltd", "corp", "corporation", "co", "company", "technologies", "technology", "labs",
+        "systems", "software", "solutions", "media", "health", "group", "studio", "ai", "fintech", "ventures",
+        "partners", "consulting", "bank", "networks", "digital", "works", "io", "capital", "tech", "cloud", "robotics"
+    ];
+
+    private static readonly HashSet<string> CompanyBlocklist = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "role", "the role", "this role", "the job", "job", "the company", "company", "us", "the team",
+        "our team", "our", "you", "them", "we", "they", "i", "the position", "position", "join", "team"
+    };
 
     private static string? ExtractLocation(string text)
     {
@@ -273,11 +386,23 @@ public sealed partial class JobParserService(HttpClient httpClient, IOcrService 
         return string.Join(", ", known.Where(skill => text.Contains(skill, StringComparison.OrdinalIgnoreCase)));
     }
 
-    [GeneratedRegex(@"^([A-Z][\w&.,'\- ]{1,48}?)\s+(?:is|are)\s+hiring\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^([A-Z][\w&.,'\- ]{1,48}?)\s+(?:is|are)\s+(?:hiring|looking\s+for|seeking)\b", RegexOptions.IgnoreCase)]
     private static partial Regex HiringLineRegex();
 
     [GeneratedRegex(@"^(?:join|at)\s+([A-Za-z][\w&.,'\- ]{1,60})", RegexOptions.IgnoreCase)]
     private static partial Regex JoinLineRegex();
+
+    [GeneratedRegex(@"(?:is|are)\s+(?:hiring|looking\s+for|seeking)\s+(?:an?\s+)?([A-Z][A-Za-z0-9&\- ]{2,60}?)(?=\s+(?:to|in|at|on|with|for)\b|\s*[.,:;]|\s*\||\s*$)", RegexOptions.IgnoreCase)]
+    private static partial Regex RoleSentenceRegex();
+
+    [GeneratedRegex(@"(?is)<title\b[^>]*>(.*?)</title>")]
+    private static partial Regex TitleTagRegex();
+
+    [GeneratedRegex(@"(?is)<meta\b[^>]+(?:property|name)=[""']og:title[""'][^>]+content=[""']([^""']+)[""']")]
+    private static partial Regex OgTitleRegex();
+
+    [GeneratedRegex(@"(?is)<meta\b[^>]+(?:property|name)=[""']og:site_name[""'][^>]+content=[""']([^""']+)[""']")]
+    private static partial Regex OgSiteNameRegex();
 
     private static readonly HashSet<string> ConnectorWords = new(StringComparer.OrdinalIgnoreCase)
         { "as", "to", "for", "a", "an", "the", "and", "our", "with" };

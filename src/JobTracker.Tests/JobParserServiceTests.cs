@@ -122,6 +122,74 @@ public sealed class JobParserServiceTests
     }
 
     [Fact]
+    public void ParseText_IndeedStyleLayout_ExtractsCompanyTitlePay()
+    {
+        const string text = "Senior Software Engineer\nStripe\nSan Francisco, CA · Remote\n$150,000 - $200,000 a year\nFull-time\nAbout the role: build payments infra.";
+
+        var result = CreateParser().ParseText(text);
+
+        Assert.Equal("Senior Software Engineer", result.Title);
+        Assert.Equal("Stripe", result.Company);
+        Assert.Equal("$150,000 - $200,000 per year", result.Pay);
+        Assert.Equal("San Francisco, CA", result.Location);
+    }
+
+    [Fact]
+    public void ParseText_LookingForSentence_ExtractsCompanyAndTitle()
+    {
+        const string text = "Datadog is looking for a Senior Backend Engineer to join our platform team in New York, NY. Compensation: $180k - $220k.";
+
+        var result = CreateParser().ParseText(text);
+
+        Assert.Equal("Datadog", result.Company);
+        Assert.Equal("Senior Backend Engineer", result.Title);
+        Assert.Equal("$180,000 - $220,000 per year", result.Pay);
+    }
+
+    [Fact]
+    public void ParseText_AboutTheRoleSectionIsNotTreatedAsCompany()
+    {
+        var result = CreateParser().ParseText("Product Designer\nFigma\nRemote\nAbout the role: own the design system.\nAbout Figma: we make collaboration tools.");
+
+        Assert.Equal("Figma", result.Company);
+        Assert.Equal("Product Designer", result.Title);
+    }
+
+    [Fact]
+    public void BuildParsedFromHtml_AcceptsJsonLdWithArrayType()
+    {
+        const string html = """
+            <html><body><script type="application/ld+json">
+            {"@context":"http://schema.org/","@type":["JobPosting"],
+             "title":"Platform Engineer","hiringOrganization":{"@type":"Organization","name":"Vertex Labs"},
+             "baseSalary":{"@type":"MonetaryAmount","currency":"USD","value":{"@type":"QuantitativeValue","minValue":160000,"maxValue":190000,"unitText":"YEAR"}}}
+            </script></body></html>
+            """;
+
+        var result = JobParserService.BuildParsedFromHtml(html);
+
+        Assert.Equal("Platform Engineer", result.Title);
+        Assert.Equal("Vertex Labs", result.Company);
+        Assert.Equal("$160,000 - $190,000 per year", result.Pay);
+    }
+
+    [Fact]
+    public void BuildParsedFromHtml_UsesMetaTagsWhenJsonLdIsMissing()
+    {
+        const string html = """
+            <html><head>
+            <title>Senior Data Analyst - Copperline | LinkedIn</title>
+            <meta property="og:site_name" content="Copperline">
+            </head><body><div>job board chrome</div></body></html>
+            """;
+
+        var result = JobParserService.BuildParsedFromHtml(html);
+
+        Assert.Equal("Senior Data Analyst", result.Title);
+        Assert.Equal("Copperline", result.Company);
+    }
+
+    [Fact]
     public void ParseText_KeepsSafeDefaultsWhenHeuristicsFindNothing()
     {
         var result = CreateParser().ParseText("We are looking for someone great.");
