@@ -1,3 +1,4 @@
+import { sankey, sankeyJustify } from 'd3-sankey';
 import { JobStatus } from './models';
 
 export interface ChartJob { status: JobStatus; interviewRound?: number | null; appliedAtUtc: string; }
@@ -121,71 +122,95 @@ export function bucketSegments(buckets: StackBucket[], bucket: StackBucket): { c
     .filter(segment => segment.pct > 0);
 }
 
-export interface SankeyNode { x: number; y: number; h: number; w: number; color: string; label: string; count: number; }
+export interface SankeyNode {
+  x: number; y: number; h: number; w: number;
+  color: string; label: string; count: number;
+  labelX: number; countY: number; labelY: number; anchor: 'start' | 'end';
+}
 export interface SankeyRibbon { d: string; color: string; }
 export interface SankeyLayout { nodes: SankeyNode[]; ribbons: SankeyRibbon[]; height: number; width: number; }
 
-/** Builds a left-to-right flow: Applied -> Interview 1..N -> Offer/Rejected/Ghosted,
- *  with one interview stage per configured round. */
+interface FlowNode { id: string; label: string; color: string; fixedValue?: number; }
+interface FlowLink { source: string; target: string; value: number; color: string; }
+
 export function sankeyLayout(jobs: ChartJob[], interviewRounds = 3): SankeyLayout {
-  const total = Math.max(1, jobs.length);
-  const maxRound = Math.max(1, interviewRounds, ...jobs.map(job => job.interviewRound ?? 0));
-  const reached = (round: number) => jobs.filter(job => (job.interviewRound ?? 0) >= round).length;
-  const offer = countOf(jobs, 'JobOffer');
-  const rejected = countOf(jobs, 'Rejected');
-  const ghosted = countOf(jobs, 'Ghosted');
+  const width = 760;
+  const height = 340;
+  const empty: SankeyLayout = { nodes: [], ribbons: [], width, height };
+  if (!jobs.length) return empty;
 
-  const height = 240;
-  const topPad = 16; const bottomPad = 16; const avail = height - topPad - bottomPad;
-  const nodeWidth = 96; const gap = 22;
-  const colCount = maxRound + 2; // Applied + interviews + outcomes
-  const width = 16 * 2 + colCount * nodeWidth + (colCount - 1) * gap;
-  const xFor = (col: number) => 16 + col * (nodeWidth + gap);
-  const hFor = (count: number) => Math.max(12, (count / total) * avail);
+  const roundOf = (job: ChartJob) => Math.max(0, Math.min(10, job.interviewRound ?? 0));
+  const maxRound = Math.min(10, Math.max(interviewRounds, ...jobs.map(roundOf), 0));
+  const reached = (stage: number) => jobs.filter(job => roundOf(job) >= stage).length;
+  const ended = (status: JobStatus, stage: number) => jobs.filter(job => job.status === status && roundOf(job) === stage).length;
 
-  const nodes: SankeyNode[] = [];
-  nodes.push({ x: xFor(0), y: topPad, h: avail, w: nodeWidth, color: STATUS_COLORS['Applied'], label: 'Applied', count: jobs.length });
-  for (let round = 1; round <= maxRound; round++) {
-    const count = reached(round);
-    const h = hFor(count);
-    nodes.push({ x: xFor(round), y: topPad + (avail - h) / 2, h, w: nodeWidth, color: STATUS_COLORS['Interview'], label: `Interview ${round}`, count });
+  const nodes: FlowNode[] = [{ id: 'applied', label: 'Applied', color: STATUS_COLORS['Applied'], fixedValue: jobs.length }];
+  for (let stage = 1; stage <= maxRound; stage++) {
+    if (reached(stage) > 0) nodes.push({ id: `i${stage}`, label: `Interview ${stage}`, color: STATUS_COLORS['Interview'] });
   }
-
-  const outcomeDefs = [
-    { label: 'Offer', count: offer, color: STATUS_COLORS['JobOffer'] },
-    { label: 'Rejected', count: rejected, color: STATUS_COLORS['Rejected'] },
-    { label: 'Ghosted', count: ghosted, color: STATUS_COLORS['Ghosted'] }
+  const terminals: FlowNode[] = [
+    { id: 'offer', label: 'Offer', color: STATUS_COLORS['JobOffer'] },
+    { id: 'rejected', label: 'Rejected', color: STATUS_COLORS['Rejected'] },
+    { id: 'ghosted', label: 'Ghosted', color: STATUS_COLORS['Ghosted'] }
   ];
-  const outcomeTotal = Math.max(1, offer + rejected + ghosted);
-  const outcomeNodes: SankeyNode[] = [];
-  let oy = topPad;
-  for (const outcome of outcomeDefs) {
-    const h = Math.max(12, (outcome.count / outcomeTotal) * avail);
-    outcomeNodes.push({ x: xFor(maxRound + 1), y: oy, h, w: nodeWidth, color: outcome.color, label: outcome.label, count: outcome.count });
-    oy += h;
-  }
-  nodes.push(...outcomeNodes);
 
-  const ribbons: SankeyRibbon[] = [];
-  const ribbon = (source: SankeyNode, sourceTop: number, sourceBottom: number, target: SankeyNode) => {
-    const midX = (source.x + nodeWidth + target.x) / 2;
-    const d = `M ${source.x + nodeWidth},${round(sourceTop)} C ${midX},${round(sourceTop)} ${midX},${round(target.y)} ${target.x},${round(target.y)} L ${target.x},${round(target.y + target.h)} C ${midX},${round(target.y + target.h)} ${midX},${round(sourceBottom)} ${source.x + nodeWidth},${round(sourceBottom)} Z`;
-    ribbons.push({ d, color: target.color });
-  };
-
-  ribbon(nodes[0], nodes[0].y, nodes[0].y + nodes[0].h, nodes[1]); // Applied -> Interview 1
-  for (let round = 1; round < maxRound; round++)
-    ribbon(nodes[round], nodes[round].y, nodes[round].y + nodes[round].h, nodes[round + 1]);
-
-  const lastInterview = nodes[maxRound];
-  let shareTop = lastInterview.y;
-  for (const outcome of outcomeNodes) {
-    const shareHeight = (outcome.count / outcomeTotal) * lastInterview.h;
-    ribbon(lastInterview, shareTop, shareTop + shareHeight, outcome);
-    shareTop += shareHeight;
+  const links: FlowLink[] = [];
+  const add = (source: string, target: string, value: number, color: string) => { if (value > 0) links.push({ source, target, value, color }); };
+  add('applied', 'i1', reached(1), STATUS_COLORS['Interview']);
+  add('applied', 'offer', ended('JobOffer', 0), STATUS_COLORS['JobOffer']);
+  add('applied', 'rejected', ended('Rejected', 0), STATUS_COLORS['Rejected']);
+  add('applied', 'ghosted', ended('Ghosted', 0), STATUS_COLORS['Ghosted']);
+  for (let stage = 1; stage <= maxRound; stage++) {
+    const id = `i${stage}`;
+    if (stage < maxRound) add(id, `i${stage + 1}`, reached(stage + 1), STATUS_COLORS['Interview']);
+    add(id, 'offer', ended('JobOffer', stage), STATUS_COLORS['JobOffer']);
+    add(id, 'rejected', ended('Rejected', stage), STATUS_COLORS['Rejected']);
+    add(id, 'ghosted', ended('Ghosted', stage), STATUS_COLORS['Ghosted']);
   }
 
-  return { nodes, ribbons, height, width };
+  const used = new Set(links.flatMap(link => [link.source, link.target]));
+  const graphNodes = nodes.concat(terminals.filter(node => used.has(node.id))).filter(node => used.has(node.id) || node.id === 'applied');
+  if (!links.length) {
+    const bar = height - 32;
+    return { nodes: [{ x: 108, y: 16, w: 18, h: bar, color: STATUS_COLORS['Applied'], label: 'Applied', count: jobs.length, labelX: 96, countY: 16 + bar / 2 - 2, labelY: 16 + bar / 2 + 14, anchor: 'end' }], ribbons: [], width, height };
+  }
+
+  const graph = sankey<FlowNode, FlowLink>()
+    .nodeId(node => node.id)
+    .nodeWidth(18)
+    .nodePadding(18)
+    .nodeAlign(sankeyJustify)
+    .extent([[108, 20], [width - 108, height - 20]])
+    .iterations(32)({
+      nodes: graphNodes.map(node => ({ ...node })),
+      links: links.map(link => ({ ...link }))
+    });
+
+  const leftEdge = Math.min(...graph.nodes.map(node => node.x0 ?? 0));
+  const laidNodes: SankeyNode[] = graph.nodes.map(node => {
+    const x0 = node.x0 ?? 0; const x1 = node.x1 ?? 18; const y0 = node.y0 ?? 0; const y1 = node.y1 ?? 0;
+    const left = x0 <= leftEdge + 0.5;
+    const cy = (y0 + y1) / 2;
+    return {
+      x: round(x0), y: round(y0), w: round(x1 - x0), h: Math.max(1, round(y1 - y0)),
+      color: node.color, label: node.label, count: Math.round(node.fixedValue ?? node.value ?? 0),
+      labelX: round(left ? x0 - 10 : x1 + 10), countY: round(cy - 2), labelY: round(cy + 14),
+      anchor: left ? 'end' : 'start'
+    };
+  });
+
+  const ribbons: SankeyRibbon[] = graph.links.map(link => {
+    const source = link.source as FlowNode & { x1?: number };
+    const target = link.target as FlowNode & { x0?: number };
+    const x0 = source.x1 ?? 0; const x1 = target.x0 ?? 0;
+    const half = (link.width ?? 0) / 2;
+    const y0 = (link.y0 ?? 0); const y1 = (link.y1 ?? 0);
+    const mid = (x0 + x1) / 2;
+    const d = `M ${round(x0)},${round(y0 - half)} C ${round(mid)},${round(y0 - half)} ${round(mid)},${round(y1 - half)} ${round(x1)},${round(y1 - half)} L ${round(x1)},${round(y1 + half)} C ${round(mid)},${round(y1 + half)} ${round(mid)},${round(y0 + half)} ${round(x0)},${round(y0 + half)} Z`;
+    return { d, color: link.color };
+  });
+
+  return { nodes: laidNodes, ribbons, width, height };
 }
 
 function round(value: number): number { return Math.round(value * 100) / 100; }

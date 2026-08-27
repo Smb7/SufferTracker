@@ -3,8 +3,9 @@ import { NgFor, NgIf } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
   bucketSegments, ChartJob, cumulativeSeries, funnelSteps, jobsInColumn, kanbanColumns,
-  pipelineStats, sankeyLayout, stackBuckets, STATUS_COLORS
+  pipelineStats, stackBuckets, STATUS_COLORS
 } from '../core/chart-data';
+import { SankeyChartComponent } from './sankey-chart.component';
 
 const COMPANIES = [
   'Acme Robotics', 'Nova Systems', 'Vertex Labs', 'Copperline', 'Northwind Data', 'Bluepeak Media',
@@ -27,6 +28,13 @@ const STATUS_MIX: { status: ChartJob['status']; count: number }[] = [
   { status: 'Rejected', count: 29 },
   { status: 'Ghosted', count: 11 }
 ];
+
+function roundFor(status: ChartJob['status'], random: () => number): number {
+  if (status === 'Interview' || status === 'JobOffer') return 1 + Math.floor(random() * 3);
+  if (status === 'Rejected') return random() < 0.62 ? 0 : 1 + Math.floor(random() * 3);
+  if (status === 'Ghosted') return random() < 0.72 ? 0 : 1 + Math.floor(random() * 2);
+  return 0;
+}
 
 function mulberry32(seed: number): () => number {
   return () => {
@@ -53,7 +61,7 @@ function generateSampleJobs(): DemoJob[] {
     const applied = new Date(now - Math.floor(random() * 69) * 86400000 - Math.floor(random() * 20) * 3600000);
     return {
       status,
-      interviewRound: status === 'Interview' ? 1 + Math.floor(random() * 3) : undefined,
+      interviewRound: roundFor(status, random),
       appliedAtUtc: applied.toISOString(),
       company: COMPANIES[Math.floor(random() * COMPANIES.length)],
       title: TITLES[(index * 7 + Math.floor(random() * 3)) % TITLES.length]
@@ -64,7 +72,7 @@ function generateSampleJobs(): DemoJob[] {
 @Component({
   standalone: true,
   selector: 'st-demo-showcase',
-  imports: [NgFor, NgIf],
+  imports: [NgFor, NgIf, SankeyChartComponent],
   template: `
     <section class="demo-showcase panel">
       <div class="panel-heading">
@@ -102,14 +110,7 @@ function generateSampleJobs(): DemoJob[] {
           <p class="subtle flow-footnote">Drag cards between columns to update a status. Interview splits into configurable rounds.</p>
         }
         @case ('Sankey flow') {
-          <svg class="sankey-figure" [attr.viewBox]="'0 0 ' + sankey.width + ' ' + sankey.height" role="img" aria-label="Sample application flow sankey diagram">
-            <path *ngFor="let ribbon of sankey.ribbons" [attr.d]="ribbon.d" [attr.fill]="ribbon.color" opacity=".3"/>
-            <g *ngFor="let node of sankey.nodes">
-              <rect [attr.x]="node.x" [attr.y]="node.y" width="110" [attr.height]="node.h" rx="6" [attr.fill]="node.color" opacity=".85"/>
-              <text [attr.x]="node.x + node.w / 2" [attr.y]="node.y + node.h / 2 - 2" text-anchor="middle" class="sankey-label">{{ node.label }}</text>
-              <text [attr.x]="node.x + node.w / 2" [attr.y]="node.y + node.h / 2 + 13" text-anchor="middle" class="sankey-count">{{ node.count }}</text>
-            </g>
-          </svg>
+          <st-sankey [jobs]="sampleJobs" [interviewRounds]="3" ariaLabel="Sample application flow sankey diagram"></st-sankey>
         }
         @case ('Funnel') {
           <div class="funnel">
@@ -167,6 +168,5 @@ export class DemoShowcaseComponent {
   get cumulative() { return cumulativeSeries(this.sampleJobs); }
   get buckets() { return stackBuckets(this.sampleJobs, 'week'); }
   segments(bucket: ReturnType<typeof stackBuckets>[number]) { return bucketSegments(this.buckets, bucket); }
-  get sankey() { return sankeyLayout(this.sampleJobs, 3); }
   get legend() { return Object.keys(STATUS_COLORS).map(status => ({ label: status === 'JobOffer' ? 'Job offer' : status, color: STATUS_COLORS[status] })); }
 }
