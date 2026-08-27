@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace JobTracker.Api.Controllers;
 
 [ApiController, Route("api/auth")]
-public sealed class AuthController(AppDbContext db, ITokenService tokens, IPasswordHasher<User> hasher, ITotpService totp) : ControllerBase
+public sealed class AuthController(AppDbContext db, ITokenService tokens, IPasswordHasher<User> hasher, ITotpService totp, ILoginAudit audit, IConfiguration config) : ControllerBase
 {
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken cancellationToken)
@@ -22,7 +22,7 @@ public sealed class AuthController(AppDbContext db, ITokenService tokens, IPassw
         if (await db.Users.AnyAsync(user => user.Email == email, cancellationToken))
             return Conflict(new { message = "An account with that email already exists." });
 
-        var user = new User { Email = email, PasswordHash = string.Empty, DisplayName = request.DisplayName.Trim() };
+        var user = new User { Email = email, PasswordHash = string.Empty, DisplayName = request.DisplayName.Trim(), IsAdmin = IsConfiguredAdmin(email) };
         user.PasswordHash = hasher.HashPassword(user, request.Password);
         user.Preferences = new UserPreference { UserId = user.Id };
         db.Users.Add(user);
@@ -33,11 +33,25 @@ public sealed class AuthController(AppDbContext db, ITokenService tokens, IPassw
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var user = await db.Users.SingleOrDefaultAsync(item => item.Email == request.Email.Trim().ToLowerInvariant(), cancellationToken);
+        var username = request.Email.Trim().ToLowerInvariant();
+        var ip = ClientIp.From(HttpContext);
+        var user = await db.Users.SingleOrDefaultAsync(item => item.Email == username, cancellationToken);
         if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed)
+        {
+            await audit.RecordAsync(username, user?.Id, user?.MfaEnabled ?? false, false, ip, cancellationToken);
             return Unauthorized(new { message = "Invalid email or password." });
+        }
+        if (user.IsLocked)
+        {
+            await audit.RecordAsync(username, user.Id, user.MfaEnabled, false, ip, cancellationToken);
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "This account is locked." });
+        }
         if (user.MfaEnabled && !totp.ValidateCode(user.MfaSecret ?? string.Empty, request.Code))
+        {
+            await audit.RecordAsync(username, user.Id, true, false, ip, cancellationToken);
             return Unauthorized(new { mfaRequired = true, message = "Enter the 6-digit code from your authenticator app." });
+        }
+        await audit.RecordAsync(username, user.Id, user.MfaEnabled, true, ip, cancellationToken);
         return Ok(ToResponse(user));
     }
 
@@ -116,5 +130,11 @@ public sealed class AuthController(AppDbContext db, ITokenService tokens, IPassw
         return Guid.TryParse(value, out var id) ? await db.Users.FindAsync([id], cancellationToken) : null;
     }
 
-    private AuthResponse ToResponse(User user) => new(tokens.CreateToken(user), user.Id, user.Email, user.DisplayName);
+    private AuthResponse ToResponse(User user) => new(tokens.CreateToken(user), user.Id, user.Email, user.DisplayName, user.IsAdmin);
+
+    private bool IsConfiguredAdmin(string email)
+    {
+        var emails = config.GetSection("Admin:Emails").Get<string[]>() ?? [];
+        return emails.Any(item => string.Equals(item.Trim(), email, StringComparison.OrdinalIgnoreCase));
+    }
 }

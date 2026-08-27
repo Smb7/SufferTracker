@@ -16,6 +16,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<User> Users => Set<User>();
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+    public DbSet<LoginEvent> LoginEvents => Set<LoginEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,5 +50,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         });
 
         modelBuilder.Entity<UserPreference>(entity => entity.HasKey(preferences => preferences.UserId));
+
+        modelBuilder.Entity<LoginEvent>(entity =>
+        {
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Username).HasMaxLength(320).IsRequired();
+            entity.Property(item => item.IpAddress).HasMaxLength(64).IsRequired();
+            entity.HasIndex(item => item.OccurredAtUtc);
+            entity.HasOne<User>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.SetNull);
+        });
     }
 }

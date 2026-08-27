@@ -26,7 +26,7 @@ export class LoginComponent {
       error: response => {
         if (response?.error?.mfaRequired) { this.mfaRequired = true; this.error = ''; }
         else if (!this.mfaRequired && response?.status === 409) this.error = response.error?.message ?? 'That email is already registered.';
-        else this.error = this.mfaRequired ? 'That code did not match. Wait for the next one and try again.' : 'Could not sign in with those details.';
+        else this.error = this.mfaRequired ? 'That code did not match. Wait for the next one and try again.' : (response?.error?.message ?? 'Could not sign in with those details.');
         this.loading = false;
       }
     });

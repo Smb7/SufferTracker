@@ -23,6 +23,7 @@ services:
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=suffertracker;Username=postgres;Password=postgres
       Jwt__Key: ${JWT_KEY:-local-development-secret-change-me}
       FrontendOrigin: http://localhost:4200
+      Admin__Emails__0: smoke@test.com
       Ocr__Endpoint: ${OCR_ENDPOINT:-}
       Ocr__ApiKey: ${OCR_API_KEY:-}
       Ocr__ApiKeyHeader: ${OCR_API_KEY_HEADER:-Ocp-Apim-Subscription-Key}

@@ -29,6 +29,7 @@ public sealed class TokenServiceTests
         Assert.Equal(user.Id.ToString(), jwt.Subject);
         Assert.Equal("shane@example.com", jwt.Claims.Single(claim => claim.Type == JwtRegisteredClaimNames.Email).Value);
         Assert.Equal("Shane B", jwt.Claims.Single(claim => claim.Type == "display_name").Value);
+        Assert.DoesNotContain(jwt.Claims, claim => claim.Type == ClaimTypes.Role || claim.Value == "Admin");
         Assert.Equal("SufferTracker.Tests", jwt.Issuer);
         Assert.Contains("SufferTracker.Tests.Clients", jwt.Audiences);
     }
@@ -52,6 +53,14 @@ public sealed class TokenServiceTests
         Assert.NotNull(principal.FindFirst(ClaimTypes.NameIdentifier));
         var expiry = handler.ReadJwtToken(signed).ValidTo;
         Assert.InRange(expiry - DateTime.UtcNow, TimeSpan.FromHours(11.5), TimeSpan.FromHours(12));
+    }
+
+    [Fact]
+    public void CreateToken_AdminUserIncludesRoleClaim()
+    {
+        var user = new User { Email = "admin@example.com", PasswordHash = "x", DisplayName = "Admin", IsAdmin = true };
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(CreateService().CreateToken(user));
+        Assert.Contains(jwt.Claims, claim => claim.Type is ClaimTypes.Role or "role" && claim.Value == "Admin");
     }
 
     [Fact]
