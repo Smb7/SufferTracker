@@ -3,12 +3,13 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { tap } from 'rxjs';
 import { AuthResponse, MfaSetup, MfaStatus } from './models';
+import { PreferencesService } from './preferences.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly endpoint = '/api/auth';
   readonly user = signal<AuthResponse | null>(this.readUser());
-  constructor(private readonly http: HttpClient, private readonly router: Router) {}
+  constructor(private readonly http: HttpClient, private readonly router: Router, private readonly preferences: PreferencesService) {}
   get token(): string | null { return localStorage.getItem('st_token'); }
   login(email: string, password: string, code?: string) { return this.http.post<AuthResponse>(`${this.endpoint}/login`, { email, password, code: code || null }).pipe(tap(response => this.store(response))); }
   register(email: string, password: string, displayName: string) { return this.http.post<AuthResponse>(`${this.endpoint}/register`, { email, password, displayName }).pipe(tap(response => this.store(response))); }
@@ -19,6 +20,6 @@ export class AuthService {
   enableMfa(code: string) { return this.http.post<MfaStatus>(`${this.endpoint}/mfa/enable`, { code }); }
   disableMfa(code: string) { return this.http.post<MfaStatus>(`${this.endpoint}/mfa/disable`, { code }); }
   logout(): void { localStorage.removeItem('st_token'); localStorage.removeItem('st_user'); this.user.set(null); void this.router.navigate(['/login']); }
-  private store(response: AuthResponse): void { localStorage.setItem('st_token', response.token); localStorage.setItem('st_user', JSON.stringify(response)); this.user.set(response); }
+  private store(response: AuthResponse): void { localStorage.setItem('st_token', response.token); localStorage.setItem('st_user', JSON.stringify(response)); this.user.set(response); this.preferences.loadTheme(); }
   private readUser(): AuthResponse | null { const value = localStorage.getItem('st_user'); try { return value ? JSON.parse(value) as AuthResponse : null; } catch { return null; } }
 }
