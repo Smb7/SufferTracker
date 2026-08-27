@@ -190,6 +190,42 @@ public sealed class JobParserServiceTests
     }
 
     [Fact]
+    public void ParseText_ParentheticalInTitleIsTreatedAsCompany()
+    {
+        var result = CreateParser().ParseText("Software Engineer (Starlink)\nRedmond, WA\n$140,000 - $180,000 a year");
+
+        Assert.Equal("Software Engineer (Starlink)", result.Title);
+        Assert.Equal("Starlink", result.Company);
+        Assert.Equal("Redmond, WA", result.Location);
+    }
+
+    [Fact]
+    public void ParseText_CompanyLineAboveTitleIsDetected()
+    {
+        var result = CreateParser().ParseText("SpaceX\nSoftware Engineer\nRedmond, WA");
+
+        Assert.Equal("SpaceX", result.Company);
+        Assert.Equal("Software Engineer", result.Title);
+    }
+
+    [Fact]
+    public void ParseText_CompanyCareersHeaderIsCleaned()
+    {
+        var result = CreateParser().ParseText("SpaceX Careers\nSoftware Engineer (Starlink)\nRedmond, WA");
+
+        Assert.Equal("SpaceX", result.Company);
+    }
+
+    [Fact]
+    public void ParseText_IgnoresLocationLikeParentheticals()
+    {
+        var result = CreateParser().ParseText("Data Analyst (Remote)\nAcme Analytics\n$90,000 a year");
+
+        Assert.Equal("Acme Analytics", result.Company);
+        Assert.Equal("Remote", result.Location);
+    }
+
+    [Fact]
     public void ParseText_KeepsSafeDefaultsWhenHeuristicsFindNothing()
     {
         var result = CreateParser().ParseText("We are looking for someone great.");
