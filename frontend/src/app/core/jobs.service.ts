@@ -4,24 +4,26 @@ import { Readability } from '@mozilla/readability';
 import { firstValueFrom } from 'rxjs';
 import { Job, JobStatus, ParsedJob } from './models';
 
-/** Builds the progressive status timeline for a target status. 'Applied' always comes first;
- *  interviews append one event per recorded round; Job Offer requires at least one interview. */
+/** Builds the progressive status timeline. 'Applied' always comes first, interview rounds are
+ *  preserved from prior progress, and a terminal status (Offer/Rejected/Ghosted) is appended at
+ *  the end — so "2 interviews then rejected" keeps its two interview events. */
 export function timelineFor(status: JobStatus, interviewRound?: number | null): JobStatus[] {
+  const round = Math.max(0, Math.min(10, interviewRound ?? 0));
+  const interviewCount = status === 'Interview' ? Math.max(1, round) : round;
   const timeline: JobStatus[] = ['Applied'];
+  for (let index = 1; index <= interviewCount; index++) timeline.push('Interview');
   switch (status) {
     case 'Waiting':
       break;
-    case 'Interview': {
-      const rounds = Math.min(10, Math.max(1, interviewRound ?? 1));
-      for (let round = 1; round <= rounds; round++) timeline.push('Interview');
-      break;
-    }
     case 'JobOffer':
-      timeline.push('Interview');
+      if (interviewCount === 0) timeline.push('Interview');
       timeline.push('JobOffer');
       break;
-    default:
+    case 'Rejected':
+    case 'Ghosted':
       timeline.push(status);
+      break;
+    default:
       break;
   }
   return timeline;
@@ -82,7 +84,7 @@ export class JobsService {
       || (job.interviewRound ?? 0) > 0;
     if (status === 'JobOffer' && !hasInterview)
       throw new Error('Record at least one interview stage before marking a job offer.');
-    const timeline = timelineFor(status, status === 'Interview' ? Math.max(1, job.interviewRound ?? 1) : undefined);
+    const timeline = timelineFor(status, job.interviewRound ?? 0);
     return this.http.put<Job>(`${this.endpoint}/${id}`, { ...job, status: timeline[timeline.length - 1], timeline });
   }
   delete(id: string) { return this.http.delete(`${this.endpoint}/${id}`); }
