@@ -106,8 +106,8 @@ function generateSampleJobs(): DemoJob[] {
             <path *ngFor="let ribbon of sankey.ribbons" [attr.d]="ribbon.d" [attr.fill]="ribbon.color" opacity=".3"/>
             <g *ngFor="let node of sankey.nodes">
               <rect [attr.x]="node.x" [attr.y]="node.y" width="110" [attr.height]="node.h" rx="6" [attr.fill]="node.color" opacity=".85"/>
-              <text [attr.x]="node.x + 55" [attr.y]="node.y + node.h / 2 - 2" text-anchor="middle" class="sankey-label">{{ node.label }}</text>
-              <text [attr.x]="node.x + 55" [attr.y]="node.y + node.h / 2 + 13" text-anchor="middle" class="sankey-count">{{ node.count }}</text>
+              <text [attr.x]="node.x + node.w / 2" [attr.y]="node.y + node.h / 2 - 2" text-anchor="middle" class="sankey-label">{{ node.label }}</text>
+              <text [attr.x]="node.x + node.w / 2" [attr.y]="node.y + node.h / 2 + 13" text-anchor="middle" class="sankey-count">{{ node.count }}</text>
             </g>
           </svg>
         }
