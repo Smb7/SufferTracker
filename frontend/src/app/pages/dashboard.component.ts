@@ -83,7 +83,7 @@ export class DashboardComponent implements OnInit {
     const job = this.jobs.find(item => item.id === id);
     this.draggingId = null;
     if (!job || (job.status === column.status && (job.interviewRound ?? 1) === (column.round ?? 1))) return;
-    const interviewRound = column.status === 'Interview' ? (column.round ?? job.interviewRound ?? 1) : undefined;
+    const interviewRound = column.status === 'Interview' ? (column.round ?? job.interviewRound ?? 1) : (job.interviewRound ?? 0);
     try {
       this.jobsService.update(job.id, { company: job.company, title: job.title, description: job.description, skills: job.skills, pay: job.pay, location: job.location, nickname: job.nickname, statusEvents: job.statusEvents ?? [], status: column.status, interviewRound })
         .subscribe({ next: updated => { Object.assign(job, updated); this.dragError = ''; }, error: error => this.dragError = error.error?.message ?? 'Could not update the status.' });
