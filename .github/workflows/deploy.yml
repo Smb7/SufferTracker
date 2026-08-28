@@ -26,6 +26,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: ADMIN_EMAIL,ADMIN_PASSWORD,CADDY_EMAIL,JWT_KEY,LLM_API_KEY,POSTGRES_PASSWORD,GH_TOKEN,GH_REPO
           script_stop: true
+          command_timeout: 30m
           script: |
             set -eu
             export DEBIAN_FRONTEND=noninteractive
@@ -43,6 +44,7 @@ jobs:
             git reset --hard origin/main
             git remote set-url origin "https://github.com/${GH_REPO}.git"
             bash scripts/setup-droplet.sh
+            systemctl disable --now apache2 nginx httpd 2>/dev/null || true
             docker compose -f docker-compose.prod.yml --env-file .env down
             docker image prune -f
             docker compose -f docker-compose.prod.yml --env-file .env up -d --build
