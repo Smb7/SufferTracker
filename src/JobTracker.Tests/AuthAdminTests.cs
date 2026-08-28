@@ -86,6 +86,44 @@ public sealed class AuthAdminTests
         Assert.False((await db.Users.FindAsync(adminUser.Id))!.IsLocked);
     }
 
+    [Fact]
+    public async Task EnsureAsync_CreatesAdminWhenMissing()
+    {
+        await using var db = CreateDb();
+        var hasher = new PasswordHasher<User>();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Admin:Emails:0"] = "ops@test.com",
+            ["Admin:Password"] = "deploy-secret-9"
+        }).Build();
+
+        await AdminBootstrap.EnsureAsync(db, hasher, config);
+
+        var user = await db.Users.SingleAsync(item => item.Email == "ops@test.com");
+        Assert.True(user.IsAdmin);
+        Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(user, user.PasswordHash, "deploy-secret-9"));
+    }
+
+    [Fact]
+    public async Task EnsureAsync_ResetsPasswordAndUnlocksExistingAdmin()
+    {
+        await using var db = CreateDb();
+        SeedUser(db, email: "ops@test.com", locked: true);
+        var hasher = new PasswordHasher<User>();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Admin:Emails:0"] = "ops@test.com",
+            ["Admin:Password"] = "new-secret-99"
+        }).Build();
+
+        await AdminBootstrap.EnsureAsync(db, hasher, config);
+
+        var user = await db.Users.SingleAsync(item => item.Email == "ops@test.com");
+        Assert.True(user.IsAdmin);
+        Assert.False(user.IsLocked);
+        Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(user, user.PasswordHash, "new-secret-99"));
+    }
+
     private static AuthController CreateAuth(AppDbContext db, ILoginAudit audit)
     {
         var tokens = new TokenService(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
