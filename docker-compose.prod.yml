@@ -23,6 +23,8 @@ services:
       Jwt__Key: ${JWT_KEY}
       FrontendOrigin: https://suffertracker.net
       Admin__Emails__0: ${ADMIN_EMAIL}
+      Admin__Password: ${ADMIN_PASSWORD:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
       Ocr__Endpoint: ${OCR_ENDPOINT:-}
       Ocr__ApiKey: ${OCR_API_KEY:-}
       Ocr__ApiKeyHeader: ${OCR_API_KEY_HEADER:-Ocp-Apim-Subscription-Key}
