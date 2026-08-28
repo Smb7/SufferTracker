@@ -68,13 +68,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
-    var emails = app.Configuration.GetSection("Admin:Emails").Get<string[]>() ?? [];
-    foreach (var email in emails.Select(item => item.Trim().ToLowerInvariant()).Where(item => item.Length > 0))
-    {
-        var user = await db.Users.SingleOrDefaultAsync(item => item.Email == email);
-        if (user is not null && !user.IsAdmin) user.IsAdmin = true;
-    }
-    await db.SaveChangesAsync();
+    await AdminBootstrap.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>(), app.Configuration);
 }
 if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
 app.UseForwardedHeaders();
