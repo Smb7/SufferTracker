@@ -9,7 +9,28 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to droplet
+      - uses: actions/checkout@v4
+      - name: Sync files to droplet
+        env:
+          HOST: ${{ secrets.DROPLET_IP }}
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -H "$HOST" >> "$HOME/.ssh/known_hosts"
+          ssh "root@${HOST}" 'mkdir -p /opt/suffertracker'
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude '.env' \
+            --exclude '**/bin/' \
+            --exclude '**/obj/' \
+            --exclude 'node_modules/' \
+            --exclude 'frontend/dist/' \
+            --exclude 'frontend/.angular/' \
+            ./ "root@${HOST}:/opt/suffertracker/"
+      - name: Start stack
         uses: appleboy/ssh-action@v1.0.3
         env:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
@@ -18,31 +39,16 @@ jobs:
           JWT_KEY: ${{ secrets.JWT_KEY }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
         with:
           host: ${{ secrets.DROPLET_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: ADMIN_EMAIL,ADMIN_PASSWORD,CADDY_EMAIL,JWT_KEY,LLM_API_KEY,POSTGRES_PASSWORD,GH_TOKEN,GH_REPO
+          envs: ADMIN_EMAIL,ADMIN_PASSWORD,CADDY_EMAIL,JWT_KEY,LLM_API_KEY,POSTGRES_PASSWORD
           script_stop: true
           command_timeout: 30m
           script: |
             set -eu
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y git
-            mkdir -p /opt/suffertracker
             cd /opt/suffertracker
-            AUTH_URL="https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git"
-            if [ ! -d .git ]; then
-              git clone "$AUTH_URL" /opt/suffertracker
-            else
-              git remote set-url origin "$AUTH_URL"
-            fi
-            git fetch origin main
-            git reset --hard origin/main
-            git remote set-url origin "https://github.com/${GH_REPO}.git"
             bash scripts/setup-droplet.sh
             systemctl disable --now apache2 nginx httpd 2>/dev/null || true
             docker compose -f docker-compose.prod.yml --env-file .env down
