@@ -22,7 +22,7 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
 systemctl enable --now docker
-systemctl disable --now apache2 nginx httpd 2>/dev/null || true
+bash "$APP_DIR/scripts/free-http-ports.sh"
 
 mkdir -p "$APP_DIR"
 cat > "$APP_DIR/.env" <<EOF

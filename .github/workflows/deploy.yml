@@ -50,7 +50,7 @@ jobs:
             set -eu
             cd /opt/suffertracker
             bash scripts/setup-droplet.sh
-            systemctl disable --now apache2 nginx httpd 2>/dev/null || true
             docker compose -f docker-compose.prod.yml --env-file .env down
+            bash scripts/free-http-ports.sh
             docker image prune -f
             docker compose -f docker-compose.prod.yml --env-file .env up -d --build
