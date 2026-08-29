@@ -90,30 +90,32 @@ public sealed class AuthAdminTests
     public async Task EnsureAsync_CreatesAdminWhenMissing()
     {
         await using var db = CreateDb();
+        var created = new string('a', 12);
         var hasher = new PasswordHasher<User>();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Admin:Emails:0"] = "ops@test.com",
-            ["Admin:Password"] = "deploy-secret-9"
+            ["Admin:Password"] = created
         }).Build();
 
         await AdminBootstrap.EnsureAsync(db, hasher, config);
 
         var user = await db.Users.SingleAsync(item => item.Email == "ops@test.com");
         Assert.True(user.IsAdmin);
-        Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(user, user.PasswordHash, "deploy-secret-9"));
+        Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(user, user.PasswordHash, created));
     }
 
     [Fact]
     public async Task EnsureAsync_ResetsPasswordAndUnlocksExistingAdmin()
     {
         await using var db = CreateDb();
+        var rotated = new string('b', 12);
         SeedUser(db, email: "ops@test.com", locked: true);
         var hasher = new PasswordHasher<User>();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Admin:Emails:0"] = "ops@test.com",
-            ["Admin:Password"] = "new-secret-99"
+            ["Admin:Password"] = rotated
         }).Build();
 
         await AdminBootstrap.EnsureAsync(db, hasher, config);
@@ -121,7 +123,7 @@ public sealed class AuthAdminTests
         var user = await db.Users.SingleAsync(item => item.Email == "ops@test.com");
         Assert.True(user.IsAdmin);
         Assert.False(user.IsLocked);
-        Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(user, user.PasswordHash, "new-secret-99"));
+        Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(user, user.PasswordHash, rotated));
     }
 
     private static AuthController CreateAuth(AppDbContext db, ILoginAudit audit)
