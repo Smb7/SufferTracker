@@ -33,7 +33,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        MAP_APIKEY: ${MAP_APIKEY:-}
     depends_on:
       - api
     restart: unless-stopped

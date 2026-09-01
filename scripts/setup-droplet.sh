@@ -9,6 +9,7 @@ APP_DIR=/opt/suffertracker
 : "${JWT_KEY:?JWT_KEY is required}"
 : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
 LLM_API_KEY="${LLM_API_KEY:-}"
+MAP_APIKEY="${MAP_APIKEY:-}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Run as root."
@@ -32,5 +33,6 @@ CADDY_EMAIL=$CADDY_EMAIL
 ADMIN_EMAIL=$ADMIN_EMAIL
 ADMIN_PASSWORD=$ADMIN_PASSWORD
 LLM_API_KEY=$LLM_API_KEY
+MAP_APIKEY=$MAP_APIKEY
 EOF
 chmod 600 "$APP_DIR/.env"

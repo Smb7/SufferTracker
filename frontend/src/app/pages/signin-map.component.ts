@@ -1,6 +1,7 @@
 import { AfterViewInit, Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild } from '@angular/core';
 import * as L from 'leaflet';
 import { LoginEvent } from '../core/models';
+import { environment } from '../../environments/environment';
 
 @Component({
   standalone: true,
@@ -15,11 +16,12 @@ export class SignInMapComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   ngAfterViewInit(): void {
     const dark = document.documentElement.classList.contains('dark');
-    const tiles = dark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    const key = environment.mapApiKey;
+    const tiles = key
+      ? `https://api.maptiler.com/maps/${dark ? 'dataviz-dark' : 'dataviz'}/{z}/{x}/{y}.png?key=${encodeURIComponent(key)}`
+      : (dark ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png');
     this.map = L.map(this.host.nativeElement, { scrollWheelZoom: false, worldCopyJump: true }).setView([20, 0], 2);
-    L.tileLayer(tiles, { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18 }).addTo(this.map);
+    L.tileLayer(tiles, { attribution: key ? '&copy; <a href="https://www.maptiler.com/">MapTiler</a> &copy; OpenStreetMap contributors' : '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18 }).addTo(this.map);
     this.layer = L.layerGroup().addTo(this.map);
     setTimeout(() => this.map?.invalidateSize(), 80);
     this.render();
