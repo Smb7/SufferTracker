@@ -16,12 +16,11 @@ export class SignInMapComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   ngAfterViewInit(): void {
     const dark = document.documentElement.classList.contains('dark');
-    const key = environment.mapApiKey;
-    const tiles = key
-      ? `https://api.maptiler.com/maps/${dark ? 'dataviz-dark' : 'dataviz'}/{z}/{x}/{y}.png?key=${encodeURIComponent(key)}`
-      : (dark ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png');
+    const key = (window as Window & { __MAP_APIKEY?: string }).__MAP_APIKEY || environment.mapApiKey;
+    const style = dark ? 'dark_all' : 'light_all';
+    const tiles = `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png${key ? `?key=${encodeURIComponent(key)}` : ''}`;
     this.map = L.map(this.host.nativeElement, { scrollWheelZoom: false, worldCopyJump: true }).setView([20, 0], 2);
-    L.tileLayer(tiles, { attribution: key ? '&copy; <a href="https://www.maptiler.com/">MapTiler</a> &copy; OpenStreetMap contributors' : '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18 }).addTo(this.map);
+    L.tileLayer(tiles, { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>', subdomains: 'abcd', maxZoom: 18 }).addTo(this.map);
     this.layer = L.layerGroup().addTo(this.map);
     setTimeout(() => this.map?.invalidateSize(), 80);
     this.render();

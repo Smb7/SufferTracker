@@ -10,7 +10,7 @@ SufferTracker is a job application tracker with a .NET 8 API, PostgreSQL persist
 
 The API applies EF Core migrations on startup for a frictionless local database. `src/JobTracker.Api/Database/001_initial.sql` is also retained as the reviewed PostgreSQL baseline for managed deployments.
 
-The admin sign-in map uses a MapTiler key. Create a GitHub Actions secret named `MAP_APIKEY` (or set it in `.env`); the deploy workflow bakes it into the frontend image.
+The admin sign-in map uses CARTO raster tiles. Request a free key at https://carto.com/basemaps/apikey and store it as the GitHub Actions secret `MAP_APIKEY` (or set it in `.env`).
 
 Screenshot OCR is provider-neutral. Set `OCR_ENDPOINT`, `OCR_API_KEY`, and optionally `OCR_API_KEY_HEADER` before starting Compose. The endpoint accepts a multipart field named `image` and may return `{ "text": "..." }`, `{ "content": "..." }`, or Azure Read-style `analyzeResult.readResults[].lines[].text` JSON. Without an endpoint, the API returns a reviewable pending state instead of failing account workflows.
 
