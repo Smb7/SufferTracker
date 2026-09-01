@@ -38,12 +38,13 @@ jobs:
           CADDY_EMAIL: ${{ secrets.CADDY_EMAIL }}
           JWT_KEY: ${{ secrets.JWT_KEY }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          MAP_APIKEY: ${{ secrets.MAP_APIKEY }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         with:
           host: ${{ secrets.DROPLET_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: ADMIN_EMAIL,ADMIN_PASSWORD,CADDY_EMAIL,JWT_KEY,LLM_API_KEY,POSTGRES_PASSWORD
+          envs: ADMIN_EMAIL,ADMIN_PASSWORD,CADDY_EMAIL,JWT_KEY,LLM_API_KEY,MAP_APIKEY,POSTGRES_PASSWORD
           script_stop: true
           command_timeout: 30m
           script: |
