@@ -16,7 +16,9 @@
             "polyfills": [
               "zone.js"
             ],
-            "assets": [],
+            "assets": [
+              { "glob": "map-config.js", "input": "src", "output": "/" }
+            ],
             "styles": [
               "src/styles.css",
               "node_modules/leaflet/dist/leaflet.css"

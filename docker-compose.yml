@@ -37,6 +37,8 @@ services:
       context: ./frontend
       args:
         MAP_APIKEY: ${MAP_APIKEY:-}
+    environment:
+      MAP_APIKEY: ${MAP_APIKEY:-}
     ports:
       - "4200:80"
     depends_on:
