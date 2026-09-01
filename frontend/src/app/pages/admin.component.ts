@@ -19,7 +19,7 @@ import { SignInMapComponent } from './signin-map.component';
           <span class="status-badge" [class.joboffer]="user.mfaEnabled" [class.ghosted]="!user.mfaEnabled">{{ user.mfaEnabled ? 'true' : 'false' }}</span>
           <span class="status-badge" [class.rejected]="user.isLocked" [class.joboffer]="!user.isLocked">{{ user.isLocked ? 'Locked' : 'Active' }}</span>
           <span class="row-actions">
-            <button class="secondary-button" *ngIf="!user.isLocked && user.id !== selfId" (click)="lock(user)">Lock</button>
+            <button class="lock-button" *ngIf="!user.isLocked && user.id !== selfId" (click)="lock(user)">Lock</button>
             <button class="secondary-button" *ngIf="user.isLocked" (click)="unlock(user)">Unlock</button>
             <button class="danger-button" *ngIf="user.mfaEnabled" (click)="resetMfa(user)">Reset MFA</button>
           </span>
