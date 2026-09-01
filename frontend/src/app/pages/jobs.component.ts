@@ -17,8 +17,8 @@ interface EditModel {
   <section class="capture panel" *ngIf="showCapture"><div class="capture-intro"><div class="eyebrow">New application</div><h2>Start with the messy bit.</h2><p>Paste a link, drop in the description text, or upload a screenshot. We will pull out the useful parts for you to review.</p></div><div class="capture-body"><div class="capture-tabs"><button [class.selected]="captureMode === 'text'" (click)="captureMode = 'text'">Paste text</button><button [class.selected]="captureMode === 'link'" (click)="captureMode = 'link'">Job link</button><button [class.selected]="captureMode === 'screenshot'" (click)="captureMode = 'screenshot'">Screenshot OCR</button></div><textarea *ngIf="captureMode === 'text'" [(ngModel)]="rawText" placeholder="Paste job description text here..."></textarea><input *ngIf="captureMode === 'link'" class="link-input" [(ngModel)]="jobUrl" placeholder="https://www.linkedin.com/jobs/view/..."><label class="file-picker" *ngIf="captureMode === 'screenshot'">Choose a screenshot or press ⌘/Ctrl+V<input type="file" accept="image/png,image/jpeg,image/webp" (change)="selectImage($event)"><small>{{ screenshot ? screenshot.name : 'PNG, JPG, or WebP · 10 MB max · paste supported' }}</small></label><div class="ocr-progress" *ngIf="ocrProgress !== null"><div class="bar-track"><div class="bar-fill orange" [style.width.%]="ocrProgress"></div></div><small>Reading image locally… {{ ocrProgress }}%</small></div><button class="primary-button" (click)="parse()" [disabled]="parsing">{{ parsing ? 'Reading...' : 'Parse details →' }}</button></div><div class="form-error" *ngIf="message">{{ message }}</div><div class="parsed-card" *ngIf="parsed"><div class="eyebrow">Review extracted details</div><h3>{{ parsed.title }} <span>at {{ parsed.company }}</span></h3><p>{{ parsed.location }} · {{ parsed.pay }}</p><label>Nickname <small>Optional, for quick filtering.</small><input [(ngModel)]="parsedNickname" placeholder="e.g. Dream gig"></label><button class="secondary-button" (click)="saveParsed()">Save application</button></div></section>
   <div class="filter-row"><div class="filter-tabs"><button *ngFor="let filter of filters" [class.selected]="activeFilter === filter" (click)="activeFilter = filter">{{ filter }} <small>{{ filterCount(filter) }}</small></button></div><input class="search-input" [(ngModel)]="search" placeholder="⌕  Search applications"></div>
   <section class="job-list panel"><div class="list-head"><span>Company / role</span><span>Stage</span><span>Applied</span><span></span></div><div class="job-row" *ngFor="let job of visibleJobs"><div class="company-cell"><span class="company-logo">{{ job.company[0] }}</span><div><strong>{{ job.company }}</strong><p>{{ job.title }}<span *ngIf="job.nickname"> · {{ job.nickname }}</span></p></div></div><div class="stage-tracker"><span class="stage-box done applied">Applied</span><ng-container *ngIf="interviewing(job)"><button class="stage-box" *ngFor="let r of rounds" [class.done]="r <= (job.interviewRound ?? 0)" [class.current]="job.status === 'Interview' && r === (job.interviewRound ?? 0)" (click)="markRound(job, r)" [attr.aria-label]="'Mark interview round ' + r">{{ r }}</button></ng-container><button *ngIf="!interviewing(job)" class="stage-box entry" (click)="markRound(job, 1)">+ Interview</button><select class="stage-box outcome" [ngModel]="outcomeValue(job)" (ngModelChange)="changeStatus(job, $event)" [attr.aria-label]="'Outcome for ' + job.company"><option value="" disabled>End…</option><option value="JobOffer" [disabled]="!offerUnlocked(job)">Offer</option><option value="Rejected">Rejected</option><option value="Ghosted">Ghosted</option></select></div><time>{{ job.appliedAtUtc | date:'MMM d, y' }}</time><span class="row-actions"><button class="icon-button" title="Edit application" (click)="openEdit(job)">✎</button><button class="icon-button" title="Delete application" (click)="remove(job)">×</button></span></div><div class="empty-state" *ngIf="!visibleJobs.length">No applications match this view.</div></section>
-  <div class="modal-backdrop" *ngIf="editing" (click)="closeEdit()">
-    <div class="modal-panel panel" (click)="$event.stopPropagation()">
+  <div class="modal-backdrop" *ngIf="editing" (mousedown)="onBackdropPointer($event, 'down')" (mouseup)="onBackdropPointer($event, 'up')" (click)="onBackdropClick($event)">
+    <div class="modal-panel panel" (mousedown)="$event.stopPropagation()" (click)="$event.stopPropagation()">
       <div class="panel-heading"><div><div class="eyebrow">Edit application</div><h2>{{ editing.company }}</h2></div><button class="icon-button" title="Close" (click)="closeEdit()">×</button></div>
       <div class="timeline-chips" *ngIf="editing?.statusEvents?.length"><div class="eyebrow">Progression</div><span class="chip" *ngFor="let event of editing.statusEvents">{{ label(event.status) }}</span></div>
       <div class="edit-grid">
@@ -145,7 +145,19 @@ export class JobsComponent implements OnInit {
     const count = this.editRoundsDone.filter(Boolean).length;
     return count === 0 ? 'None recorded' : `Round ${count}`;
   }
-  closeEdit(): void { this.editing = null; this.message = ''; }
+  private backdropDown = false;
+  private backdropUp = false;
+  onBackdropPointer(event: MouseEvent, phase: 'down' | 'up'): void {
+    const onBackdrop = event.target === event.currentTarget;
+    if (phase === 'down') this.backdropDown = onBackdrop;
+    else this.backdropUp = onBackdrop;
+  }
+  onBackdropClick(event: MouseEvent): void {
+    if (this.backdropDown && this.backdropUp && event.target === event.currentTarget) this.closeEdit();
+    this.backdropDown = false;
+    this.backdropUp = false;
+  }
+  closeEdit(): void { this.editing = null; this.message = ''; this.backdropDown = false; this.backdropUp = false; }
   saveEdit(): void {
     const target = this.editing;
     if (!target) return;
