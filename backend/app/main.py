@@ -12,6 +12,7 @@ from app.routers.auth import router as auth_router
 from app.routers.jobs import router as jobs_router
 from app.routers.parsing import router as parsing_router
 from app.routers.preferences import router as preferences_router
+from app.routers.stats import router as stats_router
 from app.services.admin_bootstrap import ensure_admin
 
 
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(parsing_router)
     app.include_router(jobs_router)
     app.include_router(preferences_router)
+    app.include_router(stats_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
