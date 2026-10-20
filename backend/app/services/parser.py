@@ -64,7 +64,7 @@ def parse_text(text: str) -> ParsedJobResponse:
 def parse_url(url: str, client: httpx.Client | None = None) -> ParsedJobResponse:
     target = validate_public_http_url(url)
     owns = client is None
-    http = client or httpx.Client(timeout=15, follow_redirects=False, headers={"User-Agent": "SufferTracker/1.0 job parser"})
+    http = client or httpx.Client(timeout=15, follow_redirects=False, trust_env=False, headers={"User-Agent": "SufferTracker/1.0 job parser"})
     try:
         response = http.get(target)
         response.raise_for_status()
