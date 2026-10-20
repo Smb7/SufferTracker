@@ -38,9 +38,5 @@ def validate_public_http_url(url: str | None) -> str:
 def _ensure_public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
         address = address.ipv4_mapped
-    blocked = address.is_loopback or address.is_unspecified or address.is_link_local or getattr(address, "is_site_local", False)
-    if isinstance(address, ipaddress.IPv4Address):
-        octets = list(address.packed)
-        blocked = blocked or octets[0] in (0, 10, 127) or (octets[0] == 100 and 64 <= octets[1] <= 127) or (octets[0] == 169 and octets[1] == 254) or (octets[0] == 172 and 16 <= octets[1] <= 31) or (octets[0] == 192 and octets[1] == 168)
-    if blocked or str(address) in {"255.255.255.255", "::"}:
+    if address.is_multicast or not address.is_global:
         raise UrlGuardError("Requests to private or internal network addresses are not allowed.")
