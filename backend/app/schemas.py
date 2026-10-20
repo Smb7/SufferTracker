@@ -71,7 +71,7 @@ class AdminUserResponse(APIModel):
     mfa_enabled: bool
     is_locked: bool
     is_admin: bool
-    created_at: datetime
+    created_at: datetime = Field(alias="createdAtUtc")
 
 
 class LoginEventResponse(APIModel):
@@ -80,7 +80,7 @@ class LoginEventResponse(APIModel):
     mfa_enabled: bool
     ip_address: str
     succeeded: bool
-    occurred_at: datetime
+    occurred_at: datetime = Field(alias="occurredAtUtc")
     latitude: float | None = None
     longitude: float | None = None
     city: str | None = None

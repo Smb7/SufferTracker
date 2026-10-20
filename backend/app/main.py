@@ -7,7 +7,9 @@ from fastapi.responses import RedirectResponse
 from app.config import get_settings
 from app.database import migrate
 from app.errors import register_error_handlers
+from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
+from app.services.admin_bootstrap import ensure_admin
 
 
 @asynccontextmanager
@@ -17,6 +19,7 @@ async def lifespan(_: FastAPI):
         if not settings.jwt_key:
             raise RuntimeError("JWT_KEY must be configured.")
         migrate()
+        ensure_admin()
     yield
 
 
@@ -39,6 +42,7 @@ def create_app() -> FastAPI:
     )
     register_error_handlers(app)
     app.include_router(auth_router)
+    app.include_router(admin_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
