@@ -4,12 +4,25 @@ from fastapi import Request
 
 
 def client_ip(request: Request) -> str:
+    peer = request.client.host if request.client and request.client.host else ""
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded and forwarded.strip():
-        return forwarded.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
+    # Only a trusted hop (loopback, private, or the test client) may supply the
+    # header. Use the last entry, which is the address that hop appended.
+    if forwarded and _trust_forwarded_header(peer):
+        parts = [part.strip() for part in forwarded.split(",") if part.strip()]
+        if parts:
+            return parts[-1][:64]
+    return peer or "unknown"
+
+
+def _trust_forwarded_header(peer: str) -> bool:
+    if not peer or peer == "testclient":
+        return True
+    try:
+        ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    return not is_public(peer)
 
 
 def is_public(ip: str) -> bool:

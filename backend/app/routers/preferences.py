@@ -8,6 +8,7 @@ from app.models import User, UserPreference
 from app.schemas import PreferencesResponse, UpdatePreferencesRequest
 
 router = APIRouter(prefix="/api/preferences", tags=["preferences"])
+VIEWS = {"pulse", "kanban", "sankey", "funnel", "line", "bar"}
 
 
 def _response(item: UserPreference) -> PreferencesResponse:
@@ -31,6 +32,8 @@ def get_preferences(user: User = Depends(current_user), db: Session = Depends(ge
 
 @router.put("", response_model=PreferencesResponse)
 def update_preferences(body: UpdatePreferencesRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PreferencesResponse:
+    if body.default_view not in VIEWS:
+        raise APIError(400, "Choose a supported dashboard view.")
     if body.interview_rounds < 1 or body.interview_rounds > 10:
         raise APIError(400, "Interview rounds must be between 1 and 10.")
     preferences = _entity(user, db)

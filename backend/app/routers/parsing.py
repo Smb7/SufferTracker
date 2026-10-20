@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from urllib.parse import urljoin
+
 from fastapi.responses import HTMLResponse, Response
 import httpx
 
@@ -19,21 +21,36 @@ PAGE_HEADERS = {
 }
 
 
+def _fetch_public_page(url: str) -> httpx.Response:
+    target = validate_public_http_url(url)
+    with httpx.Client(timeout=20, follow_redirects=False, trust_env=False, headers=PAGE_HEADERS) as client:
+        for _ in range(4):
+            response = client.get(target)
+            if response.status_code not in {301, 302, 303, 307, 308}:
+                response.raise_for_status()
+                return response
+            location = response.headers.get("location")
+            if not location:
+                raise UrlGuardError("The URL redirected without a destination.")
+            target = validate_public_http_url(urljoin(target, location))
+        raise UrlGuardError("The URL redirected too many times.")
+
+
 @router.get("/fetch-page")
 def fetch_page(url: str = Query(...), _: User = Depends(current_user)) -> Response:
     try:
-        target = validate_public_http_url(url)
-        with httpx.Client(timeout=20, follow_redirects=True, headers=PAGE_HEADERS) as client:
-            response = client.get(target)
-            response.raise_for_status()
+        response = _fetch_public_page(url)
         media_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
         if media_type and not media_type.startswith("text/") and media_type != "application/xhtml+xml":
             raise APIError(400, "That URL is not an HTML page.")
-        return HTMLResponse(response.text)
+        page = HTMLResponse(response.text)
+        page.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+        page.headers["X-Content-Type-Options"] = "nosniff"
+        return page
     except UrlGuardError as exc:
         raise APIError(400, str(exc)) from exc
-    except httpx.HTTPError as exc:
-        raise APIError(400, f"Could not fetch URL: {exc}") from exc
+    except httpx.HTTPError:
+        raise APIError(400, "Could not fetch URL.") from None
 
 
 @router.post("", response_model=ParsedJobResponse)
@@ -66,5 +83,5 @@ async def parse(
         raise APIError(400, str(exc)) from exc
     except ValueError as exc:
         raise APIError(400, str(exc)) from exc
-    except httpx.HTTPError as exc:
-        raise APIError(400, f"Could not fetch URL: {exc}") from exc
+    except httpx.HTTPError:
+        raise APIError(400, "Could not fetch URL.") from None

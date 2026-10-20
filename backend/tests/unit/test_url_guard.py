@@ -22,6 +22,10 @@ from app.services.url_guard import UrlGuardError, validate_public_http_url
         "http://172.31.255.255/jobs",
         "http://100.100.1.1/jobs",
         "http://0.0.0.0/jobs",
+        "http://[fd00::1]/jobs",
+        "http://[fc00::1]/jobs",
+        "http://224.0.0.1/jobs",
+        "http://[ff02::1]/jobs",
     ],
 )
 def test_validate_rejects_non_public_or_invalid_urls(url: str) -> None:

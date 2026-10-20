@@ -38,6 +38,19 @@ def test_mfa_setup_enable_and_login_challenge(client) -> None:
     assert disabled.json() == {"enabled": False}
 
 
+def test_setup_does_not_disable_existing_mfa(client) -> None:
+    headers = _auth_headers(client)
+    secret = client.post("/api/auth/mfa/setup", headers=headers).json()["secret"]
+    code = generate_code(secret, datetime.now(timezone.utc))
+    assert client.post("/api/auth/mfa/enable", headers=headers, json={"code": code}).status_code == 200
+    blocked = client.post("/api/auth/mfa/setup", headers=headers)
+    assert blocked.status_code == 400
+    assert "Disable MFA" in blocked.json()["message"]
+    challenged = client.post("/api/auth/login", json={"email": "mfa@example.com", "password": SECRET})
+    assert challenged.status_code == 401
+    assert challenged.json()["mfaRequired"] is True
+
+
 def test_enable_requires_setup(client) -> None:
     headers = _auth_headers(client)
     response = client.post("/api/auth/mfa/enable", headers=headers, json={"code": "123456"})
