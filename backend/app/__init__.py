@@ -1,0 +1,1 @@
+"""SufferTracker FastAPI service."""
