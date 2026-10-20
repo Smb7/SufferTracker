@@ -15,19 +15,19 @@ services:
     restart: unless-stopped
   api:
     build:
-      context: .
-      dockerfile: src/JobTracker.Api/Dockerfile
+      context: ./backend
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=suffertracker;Username=postgres;Password=${POSTGRES_PASSWORD}
-      Jwt__Key: ${JWT_KEY}
-      FrontendOrigin: https://suffertracker.net
-      Admin__Emails__0: ${ADMIN_EMAIL}
-      Admin__Password: ${ADMIN_PASSWORD:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      Ocr__Endpoint: ${OCR_ENDPOINT:-}
-      Ocr__ApiKey: ${OCR_API_KEY:-}
-      Ocr__ApiKeyHeader: ${OCR_API_KEY_HEADER:-Ocp-Apim-Subscription-Key}
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@postgres:5432/suffertracker
+      JWT_KEY: ${JWT_KEY}
+      JWT_ISSUER: SufferTracker
+      JWT_AUDIENCE: SufferTracker.Web
+      FRONTEND_ORIGIN: https://suffertracker.net
+      ADMIN_EMAILS: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      OCR_ENDPOINT: ${OCR_ENDPOINT:-}
+      OCR_API_KEY: ${OCR_API_KEY:-}
+      OCR_API_KEY_HEADER: ${OCR_API_KEY_HEADER:-Ocp-Apim-Subscription-Key}
     depends_on:
       postgres:
         condition: service_healthy

@@ -16,17 +16,19 @@ services:
       retries: 10
   api:
     build:
-      context: .
-      dockerfile: src/JobTracker.Api/Dockerfile
+      context: ./backend
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=suffertracker;Username=postgres;Password=postgres
-      Jwt__Key: ${JWT_KEY:-local-development-secret-change-me}
-      FrontendOrigin: http://localhost:4200
-      Admin__Emails__0: smoke@test.com
-      Ocr__Endpoint: ${OCR_ENDPOINT:-}
-      Ocr__ApiKey: ${OCR_API_KEY:-}
-      Ocr__ApiKeyHeader: ${OCR_API_KEY_HEADER:-Ocp-Apim-Subscription-Key}
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/suffertracker
+      JWT_KEY: ${JWT_KEY:-local-development-secret-change-me}
+      JWT_ISSUER: SufferTracker
+      JWT_AUDIENCE: SufferTracker.Web
+      FRONTEND_ORIGIN: http://localhost:4200
+      ADMIN_EMAILS: smoke@test.com
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      OCR_ENDPOINT: ${OCR_ENDPOINT:-}
+      OCR_API_KEY: ${OCR_API_KEY:-}
+      OCR_API_KEY_HEADER: ${OCR_API_KEY_HEADER:-Ocp-Apim-Subscription-Key}
     ports:
       - "8080:8080"
     depends_on:
