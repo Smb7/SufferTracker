@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from app.config import get_settings
 from app.database import migrate
 from app.errors import register_error_handlers
+from app.routers.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
+    app.include_router(auth_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
