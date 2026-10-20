@@ -24,10 +24,11 @@ def ensure_admin(db: Session | None = None, settings: Settings | None = None) ->
                 user.preferences = UserPreference(user_id=user.id)
                 session.add(user)
                 continue
+            if not can_set_password:
+                continue
             user.is_admin = True
             user.is_locked = False
-            if can_set_password:
-                user.password_hash = hash_password(password)
+            user.password_hash = hash_password(password)
         session.commit()
     finally:
         if owns_session:

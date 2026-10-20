@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
@@ -54,6 +55,15 @@ def _apply_timeline(job: JobApplication, body: JobWriteRequest, existing_intervi
     job.interview_round = sum(1 for item in events if item["status"] == "Interview")
 
 
+def _source_url(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        raise APIError(400, "Source URL must be an HTTP or HTTPS link.")
+    return value.strip()
+
+
 def _owned(db: Session, job_id: uuid.UUID, user_id: uuid.UUID) -> JobApplication:
     job = db.scalar(select(JobApplication).where(JobApplication.id == job_id, JobApplication.user_id == user_id))
     if job is None:
@@ -81,7 +91,7 @@ def create_job(body: JobWriteRequest, user: User = Depends(current_user), db: Se
         pay=(body.pay or "").strip(),
         location=(body.location or "").strip(),
         nickname=(body.nickname or "").strip(),
-        source_url=body.source_url,
+        source_url=_source_url(body.source_url),
         applied_at=_aware(body.applied_at) if body.applied_at else now,
         updated_at=now,
         status="Applied",
@@ -110,6 +120,7 @@ def update_job(job_id: uuid.UUID, body: JobWriteRequest, user: User = Depends(cu
     job.pay = (body.pay or "").strip()
     job.location = (body.location or "").strip()
     job.nickname = (body.nickname or "").strip()
+    job.source_url = _source_url(body.source_url)
     _apply_timeline(job, body, existing)
     if body.applied_at:
         job.applied_at = _aware(body.applied_at)
