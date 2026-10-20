@@ -35,6 +35,6 @@ jobs:
         with:
           llm-api-key: ${{ secrets.LLM_API_KEY }}
           llm-provider: custom
-          llm-model: deepseek-v4-pro
+          llm-model: glm-5.3-flash
           # squidgate-ignore
           llm-base-url: http://127.0.0.1:8765/v1
