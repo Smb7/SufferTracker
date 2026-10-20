@@ -1,0 +1,137 @@
+import uuid
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+
+from fastapi import APIRouter, Depends, Response
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.deps import current_user
+from app.errors import APIError
+from app.models import JobApplication, User
+from app.schemas import JobResponse, JobWriteRequest
+from app.services.timeline import TimelineError, synthesize, validate
+
+router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _response(job: JobApplication) -> JobResponse:
+    events = job.status_events or []
+    return JobResponse(
+        id=job.id,
+        company=job.company,
+        title=job.title,
+        description=job.description,
+        skills=job.skills,
+        pay=job.pay,
+        location=job.location,
+        nickname=job.nickname,
+        source_url=job.source_url,
+        status=job.status,
+        interview_round=job.interview_round,
+        applied_at=job.applied_at,
+        updated_at=job.updated_at,
+        timeline=[item["status"] if isinstance(item, dict) else item for item in events],
+    )
+
+
+def _apply_timeline(job: JobApplication, body: JobWriteRequest, existing_interviews: int | None = None) -> None:
+    try:
+        if body.timeline:
+            requested = body.timeline
+        else:
+            round_count = existing_interviews if body.timeline is None else body.interview_round
+            requested = synthesize(body.status, round_count)
+        events = validate(requested)
+    except TimelineError as exc:
+        raise APIError(400, str(exc)) from exc
+    job.status_events = events
+    job.status = events[-1]["status"]
+    job.interview_round = sum(1 for item in events if item["status"] == "Interview")
+
+
+def _source_url(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        raise APIError(400, "Source URL must be an HTTP or HTTPS link.")
+    return value.strip()
+
+
+def _owned(db: Session, job_id: uuid.UUID, user_id: uuid.UUID) -> JobApplication:
+    job = db.scalar(select(JobApplication).where(JobApplication.id == job_id, JobApplication.user_id == user_id))
+    if job is None:
+        raise APIError(404, "Application not found.")
+    return job
+
+
+@router.get("", response_model=list[JobResponse])
+def list_jobs(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[JobResponse]:
+    jobs = db.scalars(select(JobApplication).where(JobApplication.user_id == user.id).order_by(JobApplication.updated_at.desc())).all()
+    return [_response(job) for job in jobs]
+
+
+@router.post("", response_model=JobResponse, status_code=201)
+def create_job(body: JobWriteRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> JobResponse:
+    if body.status == "Interview" and (body.interview_round is None or body.interview_round < 1 or body.interview_round > 10):
+        raise APIError(400, "Interview round must be between 1 and 10.")
+    now = datetime.now(timezone.utc)
+    job = JobApplication(
+        user_id=user.id,
+        company=body.company.strip(),
+        title=body.title.strip(),
+        description=(body.description or "").strip(),
+        skills=(body.skills or "").strip(),
+        pay=(body.pay or "").strip(),
+        location=(body.location or "").strip(),
+        nickname=(body.nickname or "").strip(),
+        source_url=_source_url(body.source_url),
+        applied_at=_aware(body.applied_at) if body.applied_at else now,
+        updated_at=now,
+        status="Applied",
+        status_events=[],
+    )
+    _apply_timeline(job, body)
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return _response(job)
+
+
+@router.get("/{job_id}", response_model=JobResponse)
+def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> JobResponse:
+    return _response(_owned(db, job_id, user.id))
+
+
+@router.put("/{job_id}", response_model=JobResponse)
+def update_job(job_id: uuid.UUID, body: JobWriteRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> JobResponse:
+    job = _owned(db, job_id, user.id)
+    existing = sum(1 for item in (job.status_events or []) if isinstance(item, dict) and item.get("status") == "Interview")
+    job.company = body.company.strip()
+    job.title = body.title.strip()
+    job.description = (body.description or "").strip()
+    job.skills = (body.skills or "").strip()
+    job.pay = (body.pay or "").strip()
+    job.location = (body.location or "").strip()
+    job.nickname = (body.nickname or "").strip()
+    job.source_url = _source_url(body.source_url)
+    _apply_timeline(job, body, existing)
+    if body.applied_at:
+        job.applied_at = _aware(body.applied_at)
+    job.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(job)
+    return _response(job)
+
+
+@router.delete("/{job_id}", status_code=204)
+def delete_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> Response:
+    db.delete(_owned(db, job_id, user.id))
+    db.commit()
+    return Response(status_code=204)
