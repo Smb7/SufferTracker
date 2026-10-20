@@ -9,6 +9,7 @@ from app.database import migrate
 from app.errors import register_error_handlers
 from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
+from app.routers.jobs import router as jobs_router
 from app.services.admin_bootstrap import ensure_admin
 
 
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(auth_router)
     app.include_router(admin_router)
+    app.include_router(jobs_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
