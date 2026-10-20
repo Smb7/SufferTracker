@@ -30,16 +30,16 @@ def test_register_rejects_short_password_and_duplicate_email(client) -> None:
     assert short.status_code == 400
     assert "password" in short.json()["message"]
 
-    assert _register(client, email="smoke@test.com").status_code == 200
-    duplicate = _register(client, email="Smoke@test.com")
+    assert _register(client, email="taken@test.com").status_code == 200
+    duplicate = _register(client, email="Taken@test.com")
     assert duplicate.status_code == 409
     assert duplicate.json()["message"]
 
 
-def test_register_marks_configured_admin(client) -> None:
+def test_register_does_not_grant_admin_for_configured_email(client) -> None:
     response = _register(client, email="smoke@test.com", display_name="Smoke")
-    assert response.status_code == 200
-    assert response.json()["isAdmin"] is True
+    assert response.status_code == 403
+    assert "reserved" in response.json()["message"]
 
 
 def test_login_unknown_user_is_failure_without_user_id(client, db) -> None:
@@ -61,6 +61,31 @@ def test_login_rejects_locked_account_and_records_failure(client, db) -> None:
     event = db.query(LoginEvent).one()
     assert event.succeeded is False
     assert event.username == user.email
+
+
+def test_locked_user_token_is_rejected(client, db) -> None:
+    created = _register(client)
+    token = created.json()["token"]
+    user = db.query(User).filter_by(email="person@example.com").one()
+    user.is_locked = True
+    db.commit()
+    response = client.put(
+        "/api/auth/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"displayName": "Person", "email": "person@example.com"},
+    )
+    assert response.status_code == 401
+
+
+def test_profile_rejects_short_replacement_password(client) -> None:
+    token = _register(client).json()["token"]
+    response = client.put(
+        "/api/auth/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"displayName": "Person", "email": "person@example.com", "newPassword": "short"},
+    )
+    assert response.status_code == 400
+    assert "password" in response.json()["message"]
 
 
 def test_profile_update_and_account_delete(client) -> None:
