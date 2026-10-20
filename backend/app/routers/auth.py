@@ -34,9 +34,11 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> AuthRespon
     email = _normalize_email(body.email)
     if not email or len(body.password) < 8:
         raise APIError(400, "Email is required and password must be at least 8 characters.")
+    if _is_configured_admin(email):
+        raise APIError(403, "That email is reserved.")
     if db.scalar(select(User).where(User.email == email)):
         raise APIError(409, "An account with that email already exists.")
-    user = User(email=email, password_hash="", display_name=body.display_name.strip(), is_admin=_is_configured_admin(email))
+    user = User(email=email, password_hash="", display_name=body.display_name.strip(), is_admin=False)
     user.password_hash = hash_password(body.password)
     user.preferences = UserPreference(user_id=user.id)
     db.add(user)
@@ -70,6 +72,8 @@ def mfa_status(user: User = Depends(current_user)) -> MfaStatusResponse:
 
 @router.post("/mfa/setup", response_model=MfaSetupResponse)
 def start_mfa_setup(user: User = Depends(current_user), db: Session = Depends(get_db)) -> MfaSetupResponse:
+    if user.mfa_enabled:
+        raise APIError(400, "Disable MFA before starting a new setup.")
     user.mfa_secret = totp.generate_secret()
     user.mfa_enabled = False
     db.commit()
@@ -100,12 +104,16 @@ def disable_mfa(body: MfaCodeRequest, user: User = Depends(current_user), db: Se
 @router.put("/profile", response_model=AuthResponse)
 def update_profile(body: UpdateProfileRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> AuthResponse:
     email = _normalize_email(body.email)
+    if _is_configured_admin(email) and email != user.email:
+        raise APIError(403, "That email is reserved.")
     existing = db.scalar(select(User).where(User.email == email, User.id != user.id))
     if existing is not None:
         raise APIError(409, "That email is already in use.")
     user.email = email
     user.display_name = body.display_name.strip()
     if body.new_password and body.new_password.strip():
+        if len(body.new_password) < 8:
+            raise APIError(400, "password must be at least 8 characters.")
         user.password_hash = hash_password(body.new_password)
     db.commit()
     db.refresh(user)

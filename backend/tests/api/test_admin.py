@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.config import Settings
 from app.models import User
 from app.services.admin_bootstrap import ensure_admin
@@ -8,16 +10,18 @@ from app.services.passwords import hash_password, verify_password
 SECRET = "a" * 12
 
 
-def _token(client, email: str, admin: bool = False) -> str:
+def _token(client, db, email: str, admin: bool = False) -> str:
     response = client.post("/api/auth/register", json={"email": email, "password": SECRET, "displayName": email.split("@")[0]})
     assert response.status_code == 200
-    if admin and not response.json()["isAdmin"]:
-        raise AssertionError("expected configured admin")
+    if admin:
+        user = db.scalar(select(User).where(User.email == email))
+        user.is_admin = True
+        db.commit()
     return response.json()["token"]
 
 
 def test_admin_lock_unlock_and_reset_mfa(client, db) -> None:
-    admin = _token(client, "smoke@test.com", admin=True)
+    admin = _token(client, db, "ops@test.com", admin=True)
     member = client.post("/api/auth/register", json={"email": "member@test.com", "password": SECRET, "displayName": "Member"})
     member_id = member.json()["userId"]
     user = db.get(User, UUID(member_id))
@@ -40,11 +44,14 @@ def test_admin_lock_unlock_and_reset_mfa(client, db) -> None:
 
     listed = client.get("/api/admin/users", headers=headers)
     assert listed.status_code == 200
-    assert {item["email"] for item in listed.json()} == {"member@test.com", "smoke@test.com"}
+    assert {item["email"] for item in listed.json()} == {"member@test.com", "ops@test.com"}
 
 
-def test_admin_cannot_lock_self_and_member_is_forbidden(client) -> None:
-    admin = client.post("/api/auth/register", json={"email": "smoke@test.com", "password": SECRET, "displayName": "Admin"}).json()
+def test_admin_cannot_lock_self_and_member_is_forbidden(client, db) -> None:
+    admin = client.post("/api/auth/register", json={"email": "ops@test.com", "password": SECRET, "displayName": "Admin"}).json()
+    user = db.scalar(select(User).where(User.email == "ops@test.com"))
+    user.is_admin = True
+    db.commit()
     denied = client.post(f"/api/admin/users/{admin['userId']}/lock", headers={"Authorization": f"Bearer {admin['token']}"})
     assert denied.status_code == 400
     assert "own account" in denied.json()["message"]
@@ -52,6 +59,16 @@ def test_admin_cannot_lock_self_and_member_is_forbidden(client) -> None:
     member = client.post("/api/auth/register", json={"email": "member@test.com", "password": SECRET, "displayName": "Member"}).json()
     forbidden = client.get("/api/admin/users", headers={"Authorization": f"Bearer {member['token']}"})
     assert forbidden.status_code == 403
+
+
+def test_bootstrap_does_not_promote_existing_user_without_password(db) -> None:
+    user = User(email="ops@test.com", password_hash=hash_password("e" * 12), display_name="Ops", is_admin=False)
+    db.add(user)
+    db.commit()
+    ensure_admin(db, Settings(admin_emails="ops@test.com", admin_password="", auto_migrate=False, database_url="sqlite://"))
+    db.refresh(user)
+    assert user.is_admin is False
+    assert verify_password(user.password_hash, "e" * 12)
 
 
 def test_bootstrap_creates_admin_when_missing(db) -> None:
