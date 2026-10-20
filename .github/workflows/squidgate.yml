@@ -13,6 +13,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Start OpenCode session proxy
+        env:
+          OPENCODE_SESSION: squidgate-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker rm -f opencode-session-proxy >/dev/null 2>&1 || true
+          docker run -d --name opencode-session-proxy --network host \
+            -e OPENCODE_SESSION \
+            -v "${GITHUB_WORKSPACE}/.github/scripts/opencode-session-proxy.py:/proxy.py:ro" \
+            python:3.12-slim python /proxy.py
+          for _ in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8765/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs opencode-session-proxy || true
+          exit 1
       - name: SquidGate
         uses: SquidSec/SquidGate@v1
         with:
@@ -20,4 +37,4 @@ jobs:
           llm-provider: custom
           llm-model: deepseek-v4-pro
           # squidgate-ignore
-          llm-base-url: https://opencode.ai/zen/go/v1/
+          llm-base-url: http://127.0.0.1:8765/v1
