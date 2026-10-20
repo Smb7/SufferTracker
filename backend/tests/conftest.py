@@ -12,6 +12,7 @@ os.environ["ADMIN_PASSWORD"] = ""
 import pytest
 from fastapi.testclient import TestClient
 
+from app import models  # noqa: F401
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
 

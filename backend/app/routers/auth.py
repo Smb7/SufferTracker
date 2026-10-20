@@ -7,10 +7,11 @@ from app.database import get_db
 from app.deps import current_user
 from app.errors import APIError
 from app.models import User, UserPreference
-from app.schemas import AuthResponse, LoginRequest, RegisterRequest, UpdateProfileRequest
+from app.schemas import AuthResponse, LoginRequest, MfaCodeRequest, MfaSetupResponse, MfaStatusResponse, RegisterRequest, UpdateProfileRequest
 from app.services.client_ip import client_ip
 from app.services.login_audit import record_login
 from app.services.passwords import hash_password, verify_password
+from app.services import totp
 from app.services.tokens import create_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -55,8 +56,45 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)) -
     if user.is_locked:
         record_login(db, username, user.id, user.mfa_enabled, False, ip)
         raise APIError(403, "This account is locked.")
+    if user.mfa_enabled and not totp.validate_code(user.mfa_secret or "", body.code):
+        record_login(db, username, user.id, True, False, ip)
+        raise APIError(401, "Enter the 6-digit code from your authenticator app.", mfaRequired=True)
     record_login(db, username, user.id, user.mfa_enabled, True, ip)
     return _response(user)
+
+
+@router.get("/mfa/status", response_model=MfaStatusResponse)
+def mfa_status(user: User = Depends(current_user)) -> MfaStatusResponse:
+    return MfaStatusResponse(enabled=user.mfa_enabled)
+
+
+@router.post("/mfa/setup", response_model=MfaSetupResponse)
+def start_mfa_setup(user: User = Depends(current_user), db: Session = Depends(get_db)) -> MfaSetupResponse:
+    user.mfa_secret = totp.generate_secret()
+    user.mfa_enabled = False
+    db.commit()
+    return MfaSetupResponse(secret=user.mfa_secret, otpauth_uri=totp.build_otpauth_uri(user.email, user.mfa_secret))
+
+
+@router.post("/mfa/enable", response_model=MfaStatusResponse)
+def enable_mfa(body: MfaCodeRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> MfaStatusResponse:
+    if not user.mfa_secret:
+        raise APIError(400, "Start MFA setup before enabling it.")
+    if not totp.validate_code(user.mfa_secret, body.code):
+        raise APIError(400, "That code is not valid. Try the next one.")
+    user.mfa_enabled = True
+    db.commit()
+    return MfaStatusResponse(enabled=True)
+
+
+@router.post("/mfa/disable", response_model=MfaStatusResponse)
+def disable_mfa(body: MfaCodeRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> MfaStatusResponse:
+    if user.mfa_enabled and not totp.validate_code(user.mfa_secret or "", body.code):
+        raise APIError(400, "That code is not valid. MFA is still enabled.")
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    db.commit()
+    return MfaStatusResponse(enabled=False)
 
 
 @router.put("/profile", response_model=AuthResponse)
