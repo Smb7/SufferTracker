@@ -27,6 +27,6 @@ def current_user(
     except Exception:
         raise APIError(401, "Not authenticated.") from None
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.is_locked:
         raise APIError(401, "Not authenticated.")
     return user
