@@ -18,6 +18,7 @@ from app.schemas import (
     UpdateCareerContextRequest,
 )
 from app.services.onboarding import OPENING, apply_context_update, apply_user_turn, empty_goals, missing_sections
+from app.services.opencode import resolve_ai
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
 
@@ -52,14 +53,18 @@ def _context(profile: CareerProfile) -> CareerContextResponse:
     )
 
 
-def _state(profile: CareerProfile, messages: list[OnboardingMessage]) -> OnboardingStateResponse:
+def _configured(user: User, db: Session) -> bool:
+    return resolve_ai(user, db, get_settings()).kind in {"opencode", "env"}
+
+
+def _state(profile: CareerProfile, messages: list[OnboardingMessage], provider_configured: bool) -> OnboardingStateResponse:
     return OnboardingStateResponse(
         context=_context(profile),
         messages=[
             OnboardingMessageResponse(id=item.id, role=item.role, content=item.content, created_at=item.created_at)
             for item in messages
         ],
-        provider_configured=bool(get_settings().ai_endpoint),
+        provider_configured=provider_configured,
     )
 
 
@@ -117,7 +122,7 @@ def get_context(user: User = Depends(current_user), db: Session = Depends(get_db
 @router.get("", response_model=OnboardingStateResponse)
 def get_onboarding(user: User = Depends(current_user), db: Session = Depends(get_db)) -> OnboardingStateResponse:
     profile = _ensure(user, db)
-    return _state(profile, _ensure_opening(user, db, profile))
+    return _state(profile, _ensure_opening(user, db, profile), _configured(user, db))
 
 
 @router.put("/context", response_model=CareerContextResponse)
@@ -148,7 +153,8 @@ def post_message(body: OnboardingMessageRequest, user: User = Depends(current_us
     profile = _ensure(user, db)
     messages = _ensure_opening(user, db, profile)
     history = [(item.role, item.content) for item in messages]
-    result = apply_user_turn(profile, content, history, get_settings())
+    target = resolve_ai(user, db, get_settings())
+    result = apply_user_turn(profile, content, history, get_settings(), target=target)
     profile.provider = result.provider
     profile.notice = result.notice
     profile.updated_at = utcnow()
@@ -163,7 +169,7 @@ def post_message(body: OnboardingMessageRequest, user: User = Depends(current_us
     db.add(OnboardingMessage(user_id=user.id, seq=seq + 1, role="assistant", content=result.reply, created_at=utcnow()))
     db.commit()
     db.refresh(profile)
-    return _state(profile, _messages(db, user))
+    return _state(profile, _messages(db, user), _configured(user, db))
 
 
 @router.post("/complete", response_model=OnboardingStateResponse)
@@ -178,7 +184,7 @@ def complete_onboarding(user: User = Depends(current_user), db: Session = Depend
     profile.notice = ""
     db.commit()
     db.refresh(profile)
-    return _state(profile, _messages(db, user))
+    return _state(profile, _messages(db, user), _configured(user, db))
 
 
 @router.post("/reopen", response_model=CareerContextResponse)
@@ -211,4 +217,4 @@ def reset_onboarding(user: User = Depends(current_user), db: Session = Depends(g
     db.add(OnboardingMessage(user_id=user.id, seq=1, role="assistant", content=OPENING, created_at=utcnow()))
     db.commit()
     db.refresh(profile)
-    return _state(profile, _messages(db, user))
+    return _state(profile, _messages(db, user), _configured(user, db))

@@ -270,6 +270,34 @@ class ResumeWriteRequest(APIModel):
     sections: ResumeSections
 
 
+class OpenCodeStatusResponse(APIModel):
+    configured: bool
+    key_hint: str = ""
+    model_id: str = ""
+    source: str
+    last_checked_at: datetime | None = Field(default=None, alias="lastCheckedAtUtc")
+    last_error: str = ""
+
+
+class OpenCodeModelResponse(APIModel):
+    id: str
+    family: str
+
+
+class OpenCodeConnectRequest(APIModel):
+    api_key: str = ""
+    model_id: str
+
+
+class OpenCodeModelRequest(APIModel):
+    model_id: str
+
+
+class OpenCodeTestResponse(APIModel):
+    ok: bool
+    message: str
+
+
 class ResumeResponse(APIModel):
     job_id: UUID | None = None
     title: str = ""

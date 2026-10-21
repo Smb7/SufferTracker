@@ -15,7 +15,8 @@ import httpx
 
 from app.config import Settings, get_settings
 from app.models import CareerProfile
-from app.services.ai import AiProviderError, complete_chat
+from app.services.ai import AiProviderError, AiTarget, complete_chat, model_ready
+from app.services.opencode import complete_opencode
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ def apply_user_turn(
     history: list[tuple[str, str]] | None = None,
     settings: Settings | None = None,
     client: httpx.Client | None = None,
+    target: AiTarget | None = None,
 ) -> TurnResult:
     settings = settings or get_settings()
     text = content.strip()
@@ -124,14 +126,18 @@ def apply_user_turn(
     if not before and _is_confirm(text):
         refresh_summary(profile)
         return TurnResult(_saved_reply(), profile.provider or "guided", "", True)
-    if settings.ai_endpoint:
+    if model_ready(settings, target):
         try:
-            return _model_turn(profile, text, history or [], settings, client)
+            return _model_turn(profile, text, history or [], settings, client, target)
         except (AiProviderError, ValueError, json.JSONDecodeError):
             logger.info("Onboarding model turn failed; using the guided interviewer.")
             reply = _guided_turn(profile, text, before)
-            return TurnResult(reply, "guided", "The model could not answer, so the guided interviewer handled this turn.", False)
-    return TurnResult(_guided_turn(profile, text, before), "guided", "", False)
+            notice = "The model could not answer, so the guided interviewer handled this turn."
+            if target is not None and target.notice:
+                notice = target.notice
+            return TurnResult(reply, "guided", notice, False)
+    notice = target.notice if target is not None else ""
+    return TurnResult(_guided_turn(profile, text, before), "guided", notice, False)
 
 
 def apply_context_update(
@@ -249,11 +255,15 @@ def _model_turn(
     history: list[tuple[str, str]],
     settings: Settings,
     client: httpx.Client | None,
+    target: AiTarget | None = None,
 ) -> TurnResult:
     messages = [{"role": "system", "content": _system_prompt(profile)}]
     messages.extend({"role": role, "content": content} for role, content in history[-24:])
     messages.append({"role": "user", "content": text})
-    result = complete_chat(messages, settings, client)
+    if target is not None and target.kind == "opencode":
+        result = complete_opencode(messages, target.model_id, target.api_key, client)
+    else:
+        result = complete_chat(messages, settings, client)
     payload = _parse_payload(result.content)
     if payload is None or not str(payload.get("reply") or "").strip():
         raise ValueError("Model did not return a reply.")

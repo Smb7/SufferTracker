@@ -14,7 +14,7 @@ import { JobsService } from '../core/jobs.service';
         <div class="eyebrow">Review draft</div>
         <h1>{{ resume?.title || 'Resume' }}</h1>
         <p class="subtle" *ngIf="resume?.company">For {{ resume?.company }}. Nothing is downloaded or sent to the employer.</p>
-        <p class="fit-note">If an AI provider is configured, the draft and the evidence it cites are sent there to rewrite wording. The server still rejects employers, dates, tools, and degrees that are not in your evidence.</p>
+        <p class="fit-note">If OpenCode is connected in Settings, or a server AI provider is configured, the draft and the evidence it cites are sent there to rewrite wording. The server still rejects employers, dates, tools, and degrees that are not in your evidence.</p>
       </div>
       <a routerLink="/jobs" class="secondary-button">Back to applications</a>
     </header>

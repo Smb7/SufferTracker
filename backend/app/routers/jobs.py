@@ -23,6 +23,7 @@ from app.schemas import (
 from app.services.evidence import career_evidence, evidence_from_context
 from app.services.fit import score_job
 from app.services.requirements import extract_requirements
+from app.services.opencode import resolve_ai
 from app.services.resume import ResumeEditError, accept_edits, evidence_ids, generate_resume
 from app.services.timeline import TimelineError, synthesize, validate
 
@@ -197,6 +198,7 @@ def generate_job_resume(job_id: uuid.UUID, user: User = Depends(current_user), d
         extract_requirements(job.title, job.company, job.description, job.skills),
         education=_education(user, db),
         settings=get_settings(),
+        target=resolve_ai(user, db, get_settings()),
     )
     if drafted["blockedReason"]:
         return ResumeResponse(
