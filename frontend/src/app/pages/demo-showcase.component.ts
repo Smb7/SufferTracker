@@ -1,6 +1,5 @@
 import { Component } from '@angular/core';
 import { NgFor, NgIf } from '@angular/common';
-import { RouterLink } from '@angular/router';
 import {
   bucketSegments, ChartJob, cumulativeSeries, funnelSteps, jobsInColumn, kanbanColumns,
   pipelineStats, stackBuckets, STATUS_COLORS
