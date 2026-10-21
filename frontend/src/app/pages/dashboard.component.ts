@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { DatePipe, NgFor, NgIf } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Job, JobStatus, Preferences } from '../core/models';
+import { Job, Preferences } from '../core/models';
 import { JobsService } from '../core/jobs.service';
 import { AuthService } from '../core/auth.service';
 import { PreferencesService } from '../core/preferences.service';
