@@ -1,6 +1,5 @@
 import { Component, HostListener, OnInit } from '@angular/core';
 import { createWorker } from 'tesseract.js';
-import { firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgFor, NgIf } from '@angular/common';
 import { Job, JobStatus, ParsedJob } from '../core/models';
