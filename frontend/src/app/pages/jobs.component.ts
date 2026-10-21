@@ -1,8 +1,9 @@
 import { Component, HostListener, OnInit } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { createWorker } from 'tesseract.js';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, NgFor, NgIf } from '@angular/common';
-import { Job, JobStatus, ParsedJob } from '../core/models';
+import { Job, JobFit, JobStatus, ParsedJob } from '../core/models';
 import { JobsService } from '../core/jobs.service';
 import { PreferencesService } from '../core/preferences.service';
 
@@ -11,7 +12,7 @@ interface EditModel {
   location: string; nickname: string; status: JobStatus; interviewRound: number; appliedDate: string;
 }
 
-@Component({ standalone: true, imports: [FormsModule, NgFor, NgIf, DatePipe], template: `
+@Component({ standalone: true, imports: [FormsModule, NgFor, NgIf, DatePipe, RouterLink], template: `
   <header class="page-header"><div><div class="eyebrow">Your workspace</div><h1>Applications</h1><p class="subtle">Turn every opportunity into a next step.</p></div><button class="primary-button" (click)="showCapture = !showCapture">+ Capture job</button></header>
   <section class="capture panel" *ngIf="showCapture"><div class="capture-intro"><div class="eyebrow">New application</div><h2>Start with the messy bit.</h2><p>Paste a link, drop in the description text, or upload a screenshot. We will pull out the useful parts for you to review.</p></div><div class="capture-body"><div class="capture-tabs"><button [class.selected]="captureMode === 'text'" (click)="captureMode = 'text'">Paste text</button><button [class.selected]="captureMode === 'link'" (click)="captureMode = 'link'">Job link</button><button [class.selected]="captureMode === 'screenshot'" (click)="captureMode = 'screenshot'">Screenshot OCR</button></div><textarea *ngIf="captureMode === 'text'" [(ngModel)]="rawText" placeholder="Paste job description text here..."></textarea><input *ngIf="captureMode === 'link'" class="link-input" [(ngModel)]="jobUrl" placeholder="https://www.linkedin.com/jobs/view/..."><label class="file-picker" *ngIf="captureMode === 'screenshot'">Choose a screenshot or press ⌘/Ctrl+V<input type="file" accept="image/png,image/jpeg,image/webp" (change)="selectImage($event)"><small>{{ screenshot ? screenshot.name : 'PNG, JPG, or WebP · 10 MB max · paste supported' }}</small></label><div class="ocr-progress" *ngIf="ocrProgress !== null"><div class="bar-track"><div class="bar-fill orange" [style.width.%]="ocrProgress"></div></div><small>Reading image locally… {{ ocrProgress }}%</small></div><button class="primary-button" (click)="parse()" [disabled]="parsing">{{ parsing ? 'Reading...' : 'Parse details →' }}</button></div><div class="form-error" *ngIf="message">{{ message }}</div><div class="parsed-card" *ngIf="parsed"><div class="eyebrow">Review extracted details</div><h3>{{ parsed.title }} <span>at {{ parsed.company }}</span></h3><p>{{ parsed.location }} · {{ parsed.pay }}</p><label>Nickname <small>Optional, for quick filtering.</small><input [(ngModel)]="parsedNickname" placeholder="e.g. Dream gig"></label><button class="secondary-button" (click)="saveParsed()">Save application</button></div></section>
   <div class="filter-row"><div class="filter-tabs"><button *ngFor="let filter of filters" [class.selected]="activeFilter === filter" (click)="activeFilter = filter">{{ filter }} <small>{{ filterCount(filter) }}</small></button></div><input class="search-input" [(ngModel)]="search" placeholder="⌕  Search applications"></div>
@@ -19,6 +20,22 @@ interface EditModel {
   <div class="modal-backdrop" *ngIf="editing" (mousedown)="onBackdropPointer($event, 'down')" (mouseup)="onBackdropPointer($event, 'up')" (click)="onBackdropClick($event)">
     <div class="modal-panel panel" (mousedown)="$event.stopPropagation()" (click)="$event.stopPropagation()">
       <div class="panel-heading"><div><div class="eyebrow">Edit application</div><h2>{{ editing.company }}</h2></div><button class="icon-button" title="Close" (click)="closeEdit()">×</button></div>
+      <section class="fit-panel">
+        <div class="fit-head"><div><div class="eyebrow">Fit</div><p class="fit-note" *ngIf="fitLoading">Checking this posting against your saved context.</p></div><strong class="fit-score" *ngIf="fit && fit.score !== null">{{ fit.score }}<small>/100</small></strong></div>
+        <div class="fit-blocked" *ngIf="!fitLoading && fit?.blockedReason">
+          <p>{{ fit?.blockedReason }}</p>
+          <a *ngIf="fit?.profileBlocked" routerLink="/onboarding" (click)="closeEdit()">Finish onboarding</a>
+        </div>
+        <div *ngIf="!fitLoading && fit && fit.score !== null">
+          <div class="eyebrow">Matched</div>
+          <div class="fit-chips" *ngIf="fit.matched.length; else noMatches"><span class="fit-chip" *ngFor="let item of fit.matched">{{ item.term }} · {{ item.source }}</span></div>
+          <ng-template #noMatches><p class="fit-note">No required or preferred terms matched.</p></ng-template>
+          <div class="eyebrow">Gaps</div>
+          <div class="fit-chips" *ngIf="fit.missing.length; else noGaps"><span class="fit-chip gap" *ngFor="let gap of fit.missing">{{ gap }}</span></div>
+          <ng-template #noGaps><p class="fit-note">No required or preferred gaps.</p></ng-template>
+          <p class="fit-note" *ngIf="fit.titleAlignment !== null">Title overlap {{ titleOverlap }}. Goals are not part of the score.</p>
+        </div>
+      </section>
       <div class="timeline-chips" *ngIf="editing?.statusEvents?.length"><div class="eyebrow">Progression</div><span class="chip" *ngFor="let event of editing.statusEvents">{{ label(event.status) }}</span></div>
       <div class="edit-grid">
         <label>Company<input [(ngModel)]="editModel.company"></label>
@@ -43,6 +60,7 @@ export class JobsComponent implements OnInit {
   statuses: JobStatus[] = ['Applied', 'Interview', 'JobOffer', 'Ghosted', 'Rejected'];
   rounds: number[] = Array.from({ length: 10 }, (_, index) => index + 1);
   editing: Job | null = null; editModel!: EditModel; editRoundsDone: boolean[] = []; ocrProgress: number | null = null;
+  fit: JobFit | null = null; fitLoading = false;
   constructor(private readonly service: JobsService, private readonly preferences: PreferencesService) {}
   ngOnInit(): void { this.refresh(); this.preferences.get().subscribe(value => this.rounds = Array.from({ length: value.interviewRounds }, (_, index) => index + 1)); }
   get visibleJobs(): Job[] { return this.jobs.filter(job => (this.activeFilter === 'All' || this.label(job.status) === this.activeFilter) && `${job.company} ${job.title} ${job.nickname}`.toLowerCase().includes(this.search.toLowerCase())); }
@@ -155,6 +173,19 @@ export class JobsComponent implements OnInit {
     this.editModel = { company: job.company, title: job.title, description: job.description, skills: job.skills, pay: job.pay, location: job.location, nickname: job.nickname, status: job.status, interviewRound: job.interviewRound ?? 1, appliedDate: job.appliedAtUtc.slice(0, 10) };
     const reached = job.interviewRound ?? 0;
     this.editRoundsDone = this.rounds.map((_, index) => index < reached);
+    this.loadFit(job.id);
+  }
+  loadFit(id: string): void {
+    this.fit = null;
+    this.fitLoading = true;
+    this.service.fit(id).subscribe({
+      next: value => { this.fit = value; this.fitLoading = false; },
+      error: () => { this.fitLoading = false; this.fit = null; this.message = 'Could not score this job.'; }
+    });
+  }
+  get titleOverlap(): string {
+    const value = this.fit?.titleAlignment;
+    return value === null || value === undefined ? '' : `${Math.round(value * 100)}%`;
   }
   markEditRound(index: number): void {
     if (this.editRoundsDone.length !== this.rounds.length) this.editRoundsDone = this.rounds.map(() => false);
@@ -178,7 +209,7 @@ export class JobsComponent implements OnInit {
     this.backdropDown = false;
     this.backdropUp = false;
   }
-  closeEdit(): void { this.editing = null; this.message = ''; this.backdropDown = false; this.backdropUp = false; }
+  closeEdit(): void { this.editing = null; this.fit = null; this.fitLoading = false; this.message = ''; this.backdropDown = false; this.backdropUp = false; }
   saveEdit(): void {
     const target = this.editing;
     if (!target) return;
