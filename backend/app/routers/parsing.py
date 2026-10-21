@@ -9,7 +9,6 @@ from app.errors import APIError
 from app.models import User
 from app.schemas import ParsedJobResponse
 from app.services.images import MAX_IMAGE_BYTES, SUPPORTED, has_image_signature
-from app.services.ocr import extract_text
 from app.services.parser import parse_screenshot, parse_text, parse_url
 from app.services.url_guard import UrlGuardError, validate_public_http_url
 
