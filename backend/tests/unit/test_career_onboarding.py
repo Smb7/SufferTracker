@@ -5,7 +5,6 @@ import httpx
 
 from app.config import Settings
 from app.models import CareerProfile
-from app.services.ai import ChatResult
 from app.services.onboarding import apply_context_update, apply_user_turn, career_context, missing_sections
 
 
