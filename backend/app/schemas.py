@@ -229,3 +229,55 @@ class FitPreviewRequest(APIModel):
     company: str = ""
     description: str = ""
     skills: str = ""
+
+
+class ResumeBullet(APIModel):
+    evidence_id: str
+    text: str = ""
+
+
+class ResumeSkill(APIModel):
+    evidence_id: str
+    text: str = ""
+
+
+class ResumeRoleSection(APIModel):
+    role_id: int
+    title: str = ""
+    company: str = ""
+    start: str = ""
+    end: str = ""
+    bullets: list[ResumeBullet] = []
+
+
+class ResumeEducationSection(APIModel):
+    evidence_id: str
+    institution: str = ""
+    credential: str = ""
+    field: str = ""
+    year: str = ""
+    text: str = ""
+
+
+class ResumeSections(APIModel):
+    summary: str = ""
+    skills: list[ResumeSkill] = []
+    experience: list[ResumeRoleSection] = []
+    education: list[ResumeEducationSection] = []
+
+
+class ResumeWriteRequest(APIModel):
+    sections: ResumeSections
+
+
+class ResumeResponse(APIModel):
+    job_id: UUID | None = None
+    title: str = ""
+    company: str = ""
+    score: int | None = None
+    blocked_reason: str | None = None
+    profile_blocked: bool = False
+    missing: list[str] = []
+    sections: ResumeSections | None = None
+    evidence_ids: list[str] = []
+    updated_at: datetime | None = Field(default=None, alias="updatedAtUtc")

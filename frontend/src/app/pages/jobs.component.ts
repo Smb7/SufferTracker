@@ -34,6 +34,7 @@ interface EditModel {
           <div class="fit-chips" *ngIf="fit.missing.length; else noGaps"><span class="fit-chip gap" *ngFor="let gap of fit.missing">{{ gap }}</span></div>
           <ng-template #noGaps><p class="fit-note">No required or preferred gaps.</p></ng-template>
           <p class="fit-note" *ngIf="fit.titleAlignment !== null">Title overlap {{ titleOverlap }}. Goals are not part of the score.</p>
+          <a class="secondary-button resume-draft" [routerLink]="['/jobs', editing.id, 'resume']">Draft resume</a>
         </div>
       </section>
       <div class="timeline-chips" *ngIf="editing?.statusEvents?.length"><div class="eyebrow">Progression</div><span class="chip" *ngFor="let event of editing.statusEvents">{{ label(event.status) }}</span></div>

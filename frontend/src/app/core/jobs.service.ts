@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Readability } from '@mozilla/readability';
 import { firstValueFrom } from 'rxjs';
-import { Job, JobFit, JobStatus, ParsedJob } from './models';
+import { Job, JobFit, JobResume, JobStatus, ParsedJob, ResumeSections } from './models';
 
 /** Builds the progressive status timeline. 'Applied' always comes first, interview rounds are
  *  preserved from prior progress, and a terminal status (Offer/Rejected/Ghosted) is appended at
@@ -89,4 +89,7 @@ export class JobsService {
   }
   delete(id: string) { return this.http.delete(`${this.endpoint}/${id}`); }
   fit(id: string) { return this.http.get<JobFit>(`${this.endpoint}/${id}/fit`); }
+  resume(id: string) { return this.http.get<JobResume>(`${this.endpoint}/${id}/resume`); }
+  draftResume(id: string) { return this.http.post<JobResume>(`${this.endpoint}/${id}/resume`, {}); }
+  saveResume(id: string, sections: ResumeSections) { return this.http.put<JobResume>(`${this.endpoint}/${id}/resume`, { sections }); }
 }
