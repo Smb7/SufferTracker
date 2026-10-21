@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import current_user
 from app.errors import APIError
-from app.models import JobApplication, User
-from app.schemas import JobRequirementsResponse, JobResponse, JobWriteRequest
+from app.models import CareerProfile, JobApplication, User
+from app.schemas import FitPreviewRequest, FitResponse, JobRequirementsResponse, JobResponse, JobWriteRequest
+from app.services.evidence import career_evidence, evidence_from_context
+from app.services.fit import score_job
 from app.services.requirements import extract_requirements
 from app.services.timeline import TimelineError, synthesize, validate
 
@@ -105,6 +107,29 @@ def create_job(body: JobWriteRequest, user: User = Depends(current_user), db: Se
     return _response(job)
 
 
+def _evidence(user: User, db: Session) -> dict:
+    profile = user.career_profile
+    if profile is None:
+        profile = db.scalar(select(CareerProfile).where(CareerProfile.user_id == user.id))
+    if profile is None:
+        return evidence_from_context({"skills": [], "experience": [], "education": [], "interests": [], "goals": {}})
+    return career_evidence(profile)
+
+
+def _fit(user: User, db: Session, *, title: str, company: str, description: str, skills: str) -> FitResponse:
+    scored = score_job(_evidence(user, db), title=title, company=company, description=description, skills=skills)
+    return FitResponse.model_validate(scored)
+
+
+@router.post("/fit", response_model=FitResponse)
+def preview_fit(
+    body: FitPreviewRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> FitResponse:
+    return _fit(user, db, title=body.title, company=body.company, description=body.description, skills=body.skills)
+
+
 @router.get("/{job_id}/requirements", response_model=JobRequirementsResponse)
 def get_requirements(
     job_id: uuid.UUID,
@@ -114,6 +139,12 @@ def get_requirements(
     job = _owned(db, job_id, user.id)
     extracted = extract_requirements(job.title, job.company, job.description, job.skills)
     return JobRequirementsResponse.model_validate(extracted)
+
+
+@router.get("/{job_id}/fit", response_model=FitResponse)
+def get_fit(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> FitResponse:
+    job = _owned(db, job_id, user.id)
+    return _fit(user, db, title=job.title, company=job.company, description=job.description, skills=job.skills)
 
 
 @router.get("/{job_id}", response_model=JobResponse)

@@ -13,3 +13,5 @@ export interface CareerGoals { targetRoles: string[]; industries: string[]; loca
 export interface CareerContext { status: 'not_started' | 'in_progress' | 'completed'; summary: string; experience: ExperienceItem[]; education: EducationItem[]; skills: string[]; interests: string[]; goals: CareerGoals; missing: string[]; provider: string; notice: string; updatedAtUtc: string; }
 export interface OnboardingMessage { id: string; role: 'assistant' | 'user' | string; content: string; createdAtUtc: string; }
 export interface OnboardingState { context: CareerContext; messages: OnboardingMessage[]; providerConfigured: boolean; }
+export interface FitMatch { term: string; source: string; }
+export interface JobFit { score: number | null; blockedReason: string | null; profileBlocked: boolean; matched: FitMatch[]; missing: string[]; titleAlignment: number | null; }

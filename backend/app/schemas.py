@@ -208,3 +208,24 @@ class JobRequirementsResponse(APIModel):
     preferred: list[str]
     keywords: list[str]
     blocked_reason: str | None = None
+
+
+class FitMatch(APIModel):
+    term: str
+    source: str
+
+
+class FitResponse(APIModel):
+    score: int | None = None
+    blocked_reason: str | None = None
+    profile_blocked: bool = False
+    matched: list[FitMatch] = []
+    missing: list[str] = []
+    title_alignment: float | None = None
+
+
+class FitPreviewRequest(APIModel):
+    title: str = ""
+    company: str = ""
+    description: str = ""
+    skills: str = ""
