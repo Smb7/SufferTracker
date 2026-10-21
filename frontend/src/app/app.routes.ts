@@ -8,6 +8,7 @@ import { LoginComponent } from './pages/login.component';
 import { RegisterComponent } from './pages/register.component';
 import { DashboardComponent } from './pages/dashboard.component';
 import { JobsComponent } from './pages/jobs.component';
+import { ResumeComponent } from './pages/resume.component';
 import { OnboardingComponent } from './pages/onboarding.component';
 import { SettingsComponent } from './pages/settings.component';
 import { AdminComponent } from './pages/admin.component';
@@ -19,6 +20,7 @@ export const routes: Routes = [
   { path: '', canMatch: [authenticatedMatch], component: AppShellComponent, canActivate: [authGuard], children: [
     { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     { path: 'dashboard', component: DashboardComponent },
+    { path: 'jobs/:id/resume', component: ResumeComponent },
     { path: 'jobs', component: JobsComponent },
     { path: 'onboarding', component: OnboardingComponent },
     { path: 'settings', component: SettingsComponent },

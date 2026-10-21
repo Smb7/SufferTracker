@@ -6,14 +6,24 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.deps import current_user
 from app.errors import APIError
-from app.models import CareerProfile, JobApplication, User
-from app.schemas import FitPreviewRequest, FitResponse, JobRequirementsResponse, JobResponse, JobWriteRequest
+from app.models import CareerProfile, JobApplication, TailoredResume, User
+from app.schemas import (
+    FitPreviewRequest,
+    FitResponse,
+    JobRequirementsResponse,
+    JobResponse,
+    JobWriteRequest,
+    ResumeResponse,
+    ResumeWriteRequest,
+)
 from app.services.evidence import career_evidence, evidence_from_context
 from app.services.fit import score_job
 from app.services.requirements import extract_requirements
+from app.services.resume import ResumeEditError, accept_edits, evidence_ids, generate_resume
 from app.services.timeline import TimelineError, synthesize, validate
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -107,13 +117,44 @@ def create_job(body: JobWriteRequest, user: User = Depends(current_user), db: Se
     return _response(job)
 
 
-def _evidence(user: User, db: Session) -> dict:
+def _profile(user: User, db: Session) -> CareerProfile | None:
     profile = user.career_profile
     if profile is None:
         profile = db.scalar(select(CareerProfile).where(CareerProfile.user_id == user.id))
+    return profile
+
+
+def _evidence(user: User, db: Session) -> dict:
+    profile = _profile(user, db)
     if profile is None:
         return evidence_from_context({"skills": [], "experience": [], "education": [], "interests": [], "goals": {}})
     return career_evidence(profile)
+
+
+def _education(user: User, db: Session) -> list:
+    profile = _profile(user, db)
+    if profile is None:
+        return []
+    return [dict(item) for item in (profile.education or []) if isinstance(item, dict)]
+
+
+def _resume_row(db: Session, job_id: uuid.UUID, user_id: uuid.UUID) -> TailoredResume | None:
+    return db.scalar(select(TailoredResume).where(TailoredResume.job_id == job_id, TailoredResume.user_id == user_id))
+
+
+def _resume_response(job: JobApplication, row: TailoredResume, evidence: dict) -> ResumeResponse:
+    fit = score_job(evidence, title=job.title, company=job.company, description=job.description, skills=job.skills)
+    missing = list(fit["missing"]) if fit.get("score") is not None else []
+    return ResumeResponse(
+        job_id=job.id,
+        title=job.title,
+        company=job.company,
+        score=row.score,
+        missing=missing,
+        sections=row.sections,
+        evidence_ids=list(row.evidence_ids or []),
+        updated_at=row.updated_at,
+    )
 
 
 def _fit(user: User, db: Session, *, title: str, company: str, description: str, skills: str) -> FitResponse:
@@ -145,6 +186,82 @@ def get_requirements(
 def get_fit(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> FitResponse:
     job = _owned(db, job_id, user.id)
     return _fit(user, db, title=job.title, company=job.company, description=job.description, skills=job.skills)
+
+
+@router.post("/{job_id}/resume", response_model=ResumeResponse)
+def generate_job_resume(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ResumeResponse:
+    job = _owned(db, job_id, user.id)
+    evidence = _evidence(user, db)
+    drafted = generate_resume(
+        evidence,
+        extract_requirements(job.title, job.company, job.description, job.skills),
+        education=_education(user, db),
+        settings=get_settings(),
+    )
+    if drafted["blockedReason"]:
+        return ResumeResponse(
+            job_id=job.id,
+            title=job.title,
+            company=job.company,
+            blocked_reason=drafted["blockedReason"],
+            profile_blocked=drafted["profileBlocked"],
+        )
+    now = datetime.now(timezone.utc)
+    sections = drafted["sections"]
+    ids = list(drafted["evidenceIds"])
+    row = _resume_row(db, job.id, user.id)
+    if row is None:
+        row = TailoredResume(
+            user_id=user.id,
+            job_id=job.id,
+            score=drafted["score"],
+            sections=sections,
+            evidence_ids=ids,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(row)
+    else:
+        row.score = drafted["score"]
+        row.sections = sections
+        row.evidence_ids = ids
+        row.updated_at = now
+    db.commit()
+    db.refresh(row)
+    return _resume_response(job, row, evidence)
+
+
+@router.get("/{job_id}/resume", response_model=ResumeResponse)
+def get_resume(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ResumeResponse:
+    job = _owned(db, job_id, user.id)
+    row = _resume_row(db, job.id, user.id)
+    if row is None:
+        raise APIError(404, "Resume not found.")
+    return _resume_response(job, row, _evidence(user, db))
+
+
+@router.put("/{job_id}/resume", response_model=ResumeResponse)
+def save_resume(
+    job_id: uuid.UUID,
+    body: ResumeWriteRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ResumeResponse:
+    job = _owned(db, job_id, user.id)
+    row = _resume_row(db, job.id, user.id)
+    if row is None:
+        raise APIError(404, "Resume not found.")
+    evidence = _evidence(user, db)
+    try:
+        sections = accept_edits(body.sections.model_dump(by_alias=True), evidence, _education(user, db))
+    except ResumeEditError as exc:
+        raise APIError(400, str(exc)) from exc
+    row.sections = sections
+    row.evidence_ids = evidence_ids(sections)
+    row.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return _resume_response(job, row, evidence)
 
 
 @router.get("/{job_id}", response_model=JobResponse)

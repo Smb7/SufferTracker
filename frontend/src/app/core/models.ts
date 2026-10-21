@@ -15,3 +15,12 @@ export interface OnboardingMessage { id: string; role: 'assistant' | 'user' | st
 export interface OnboardingState { context: CareerContext; messages: OnboardingMessage[]; providerConfigured: boolean; }
 export interface FitMatch { term: string; source: string; }
 export interface JobFit { score: number | null; blockedReason: string | null; profileBlocked: boolean; matched: FitMatch[]; missing: string[]; titleAlignment: number | null; }
+export interface ResumeBullet { evidenceId: string; text: string; }
+export interface ResumeSkill { evidenceId: string; text: string; }
+export interface ResumeRole { roleId: number; title: string; company: string; start: string; end: string; bullets: ResumeBullet[]; }
+export interface ResumeEducation { evidenceId: string; institution: string; credential: string; field: string; year: string; text: string; }
+export interface ResumeSections { summary: string; skills: ResumeSkill[]; experience: ResumeRole[]; education: ResumeEducation[]; }
+export interface JobResume {
+  jobId: string; title: string; company: string; score: number | null; blockedReason: string | null; profileBlocked: boolean;
+  missing: string[]; sections: ResumeSections | null; evidenceIds: string[]; updatedAtUtc: string | null;
+}

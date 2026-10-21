@@ -60,6 +60,7 @@ class JobApplication(Base):
     applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     user: Mapped[User] = relationship(back_populates="jobs")
+    resumes: Mapped[list["TailoredResume"]] = relationship(back_populates="job", cascade="all, delete-orphan")
 
 
 class CareerProfile(Base):
@@ -96,6 +97,21 @@ class OnboardingMessage(Base):
     content: Mapped[str] = mapped_column(default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     user: Mapped[User] = relationship(back_populates="onboarding_messages")
+
+
+class TailoredResume(Base):
+    __tablename__ = "tailored_resumes"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_tailored_resumes_user_job"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("job_applications.id", ondelete="CASCADE"), index=True)
+    score: Mapped[int] = mapped_column(default=0)
+    sections: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_ids: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    job: Mapped[JobApplication] = relationship(back_populates="resumes")
 
 
 class LoginEvent(Base):
