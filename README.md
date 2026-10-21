@@ -20,4 +20,5 @@ Screenshot OCR is provider-neutral. Set `OCR_ENDPOINT`, `OCR_API_KEY`, and optio
 - `frontend`: standalone Angular application with guards, interceptor, dashboard, application capture, and settings.
 - `.github/workflows/squidgate.yml`: required SquidGate PR security gate configured for DeepSeek V4 Flash.
 - `.github/workflows/ci.yml`: FastAPI tests with a 70% coverage gate, Angular build, and Docker build verification.
+- `.github/workflows/lint.yml`: Ruff on the API and ESLint on the Angular app.
 
