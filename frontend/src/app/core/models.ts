@@ -5,6 +5,9 @@ export interface LoginEvent { id: string; username: string; mfaEnabled: boolean;
 export interface Job { id: string; company: string; title: string; description: string; skills: string; pay: string; location: string; nickname: string; sourceUrl?: string; status: JobStatus; interviewRound?: number; statusEvents?: { status: JobStatus }[]; appliedAtUtc: string; updatedAtUtc: string; }
 export interface ParsedJob { company: string; title: string; description: string; skills: string; pay: string; location: string; sourceUrl?: string; notice?: string; }
 export interface Preferences { darkMode: boolean; defaultView: string; interviewRounds: number; }
+export interface OpenCodeStatus { configured: boolean; keyHint: string; modelId: string; source: 'opencode' | 'environment' | 'none'; lastCheckedAtUtc: string | null; lastError: string; }
+export interface OpenCodeModel { id: string; family: string; }
+export interface OpenCodeTest { ok: boolean; message: string; }
 export interface MfaSetup { secret: string; otpauthUri: string; }
 export interface MfaStatus { enabled: boolean; }
 export interface ExperienceItem { title: string; company: string; start: string; end: string; highlights: string; }

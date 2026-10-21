@@ -18,6 +18,23 @@ class ChatResult:
     provider_used: bool
 
 
+@dataclass(frozen=True)
+class AiTarget:
+    """Where a coaching or resume call should be sent. kind is opencode, env, or none."""
+
+    kind: str
+    model_id: str = ""
+    api_key: str = ""
+    notice: str = ""
+
+
+def model_ready(settings: Settings | None, target: AiTarget | None = None) -> bool:
+    """True when a user OpenCode connection or the server endpoint can take a turn."""
+    if target is not None:
+        return target.kind in {"opencode", "env"}
+    return bool(settings and settings.ai_endpoint)
+
+
 def complete_chat(
     messages: list[dict[str, str]],
     settings: Settings | None = None,

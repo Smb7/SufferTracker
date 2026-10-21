@@ -17,8 +17,8 @@ import { OnboardingService } from '../core/onboarding.service';
       </div>
       <a routerLink="/dashboard" class="secondary-button">Back to overview</a>
     </header>
-    <p class="coach-note" *ngIf="loaded && !providerConfigured">Guided interviewer. Set AI_ENDPOINT to use a model — until then, answers stay in SufferTracker.</p>
-    <p class="coach-note" *ngIf="loaded && providerConfigured">This conversation is sent to your configured AI provider so the coach can structure it.</p>
+    <p class="coach-note" *ngIf="loaded && !providerConfigured">Guided interviewer. <a routerLink="/settings">Connect OpenCode in Settings</a> to use a model — until then, answers stay in SufferTracker.</p>
+    <p class="coach-note" *ngIf="loaded && providerConfigured">This conversation is sent to OpenCode, or the server AI provider, so the coach can structure it.</p>
     <ol class="coach-steps" *ngIf="context">
       <li *ngFor="let step of steps" [class.done]="done(step.key)" [class.current]="current(step.key)">{{ step.label }}</li>
     </ol>

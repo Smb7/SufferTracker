@@ -25,6 +25,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     preferences: Mapped["UserPreference | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    opencode_connection: Mapped["OpenCodeConnection | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     jobs: Mapped[list["JobApplication"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     career_profile: Mapped["CareerProfile | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     onboarding_messages: Mapped[list["OnboardingMessage"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -38,6 +39,18 @@ class UserPreference(Base):
     default_view: Mapped[str] = mapped_column(default="kanban")
     interview_rounds: Mapped[int] = mapped_column(default=3)
     user: Mapped[User] = relationship(back_populates="preferences")
+
+
+class OpenCodeConnection(Base):
+    __tablename__ = "opencode_connections"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    api_key_ciphertext: Mapped[str] = mapped_column(String(2000))
+    key_hint: Mapped[str] = mapped_column(String(32), default="")
+    model_id: Mapped[str] = mapped_column(String(80), default="")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    last_error: Mapped[str] = mapped_column(String(300), default="")
+    user: Mapped[User] = relationship(back_populates="opencode_connection")
 
 
 class JobApplication(Base):

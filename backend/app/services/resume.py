@@ -1,8 +1,8 @@
 """Tailored resume for one job. Every claim stays tied to career evidence.
 
 A configured model may rewrite wording. It cannot add employers, dates, tools,
-or degrees, and it does not pick the fit score. With no AI endpoint the
-deterministic draft is the resume.
+or degrees, and it does not pick the fit score. With no OpenCode connection
+and no AI endpoint, the deterministic draft is the resume.
 """
 
 import json
@@ -12,7 +12,8 @@ from dataclasses import dataclass
 import httpx
 
 from app.config import Settings, get_settings
-from app.services.ai import AiProviderError, complete_chat
+from app.services.ai import AiProviderError, AiTarget, complete_chat, model_ready
+from app.services.opencode import complete_opencode
 from app.services.evidence import distinctive_tokens, find_term, normalize_key
 from app.services.fit import score_fit
 
@@ -59,6 +60,7 @@ def generate_resume(
     education: list | None = None,
     settings: Settings | None = None,
     client: httpx.Client | None = None,
+    target: AiTarget | None = None,
 ) -> dict:
     """Draft or blocked result. Does not persist. Does not log career text."""
     education = [item for item in (education or []) if isinstance(item, dict)]
@@ -75,8 +77,8 @@ def generate_resume(
     catalog = build_catalog(evidence, education)
     sections = _deterministic(evidence, fit, education)
     settings = settings or get_settings()
-    if settings.ai_endpoint:
-        sections = _rewrite(sections, evidence, fit, education, settings, client, catalog)
+    if model_ready(settings, target):
+        sections = _rewrite(sections, evidence, fit, education, settings, client, catalog, target)
     return {
         "blockedReason": None,
         "profileBlocked": False,
@@ -255,13 +257,17 @@ def _rewrite(
     settings: Settings,
     client: httpx.Client | None,
     catalog: Catalog,
+    target: AiTarget | None = None,
 ) -> dict:
     messages = [
         {"role": "system", "content": _system(evidence, fit, education)},
         {"role": "user", "content": "Return the resume JSON."},
     ]
     try:
-        result = complete_chat(messages, settings, client)
+        if target is not None and target.kind == "opencode":
+            result = complete_opencode(messages, target.model_id, target.api_key, client)
+        else:
+            result = complete_chat(messages, settings, client)
     except AiProviderError:
         return sections
     parsed = _parse_payload(result.content)
