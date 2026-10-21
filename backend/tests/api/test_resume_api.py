@@ -87,6 +87,8 @@ def test_guided_resume_is_owner_scoped_and_edits_stay_cited(client, db) -> None:
     assert drafted.status_code == 200
     body = drafted.json()
     assert body["score"] is not None
+    assert body["updatedAtUtc"]
+    assert "updatedAt" not in body
     assert body["blockedReason"] is None
     assert "Python" in json.dumps(body["sections"])
     assert "Initech" not in json.dumps(body)

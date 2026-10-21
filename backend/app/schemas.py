@@ -280,4 +280,4 @@ class ResumeResponse(APIModel):
     missing: list[str] = []
     sections: ResumeSections | None = None
     evidence_ids: list[str] = []
-    updated_at: datetime | None = None
+    updated_at: datetime | None = Field(default=None, alias="updatedAtUtc")
