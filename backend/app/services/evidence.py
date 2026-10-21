@@ -287,8 +287,38 @@ def _has_list_sep(text: str) -> bool:
     return bool(_LIST_SEP.search(text))
 
 
+def distinctive_tokens(text: str) -> list[str]:
+    """Tool-shaped tokens in prose. Bare title-case words are not tools."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for token in _TOKEN.findall(text):
+        cleaned = _clean_token(token)
+        if not cleaned or not _is_distinctive(cleaned):
+            continue
+        key = normalize_key(cleaned)
+        if len(key) < 2 or key in seen:
+            continue
+        seen.add(key)
+        found.append(cleaned)
+    return found
+
+
 def _clean_token(token: str) -> str:
     return token.strip(".,;:!?()[]\"'")
+
+
+def _is_distinctive(token: str) -> bool:
+    token = _clean_token(token)
+    key = normalize_key(token)
+    if len(key) < 2 or key in _STOPWORDS or key in _COMMON_CAPS:
+        return False
+    if any(char.isdigit() or char in "#+/" for char in token) or "." in token:
+        return True
+    if any(char.isupper() for char in token[1:]):
+        return True
+    if token.isupper() and len(token) <= 8:
+        return True
+    return key in _LEXICON
 
 
 def _is_toolish(token: str) -> bool:
