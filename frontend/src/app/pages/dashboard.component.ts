@@ -5,6 +5,7 @@ import { Job, JobStatus, Preferences } from '../core/models';
 import { JobsService } from '../core/jobs.service';
 import { AuthService } from '../core/auth.service';
 import { PreferencesService } from '../core/preferences.service';
+import { OnboardingService } from '../core/onboarding.service';
 import {
   bucketSegments, cumulativeSeries, funnelSteps, jobsInColumn, KanbanColumnDef, kanbanColumns,
   pipelineStats, rateNumber, stackBuckets, STATUS_COLORS
@@ -13,6 +14,7 @@ import { SankeyChartComponent } from './sankey-chart.component';
 
 @Component({ standalone: true, imports: [NgFor, NgIf, DatePipe, RouterLink, SankeyChartComponent], template: `
   <header class="page-header"><div><div class="eyebrow">{{ today | date:'EEEE, MMMM d' }}</div><h1>Good {{ greeting }}, {{ firstName }}.</h1><p class="subtle">Here is the shape of your search right now.</p></div><a routerLink="/jobs" class="primary-button">+ Add application</a></header>
+  <section class="panel coach-banner" *ngIf="coachStatus === 'not_started' || coachStatus === 'in_progress'"><div><div class="eyebrow">Coach</div><h2>{{ coachStatus === 'in_progress' ? 'The coach has a partial picture.' : 'The coach does not know your search yet.' }}</h2><p class="subtle">A short onboarding covers experience, education, skills, interests, and the job you want next.</p></div><a routerLink="/onboarding" class="primary-button">{{ coachStatus === 'in_progress' ? 'Continue onboarding' : 'Start onboarding' }}</a></section>
   <section class="stat-grid"><div class="stat-card accent"><span class="stat-label">Active pipeline</span><strong>{{ activeCount }}</strong><span class="trend">{{ monthTrend }} <small>applications vs last month</small></span></div><div class="stat-card"><span class="stat-label">Interviews</span><strong>{{ interviewCount }}</strong><span class="stat-note">{{ interviewCount ? 'Keep the momentum' : 'Your next one is waiting' }}</span></div><div class="stat-card"><span class="stat-label">Response rate</span><strong>{{ responseRate }}<small>%</small></strong><span class="stat-note">Across all applications</span></div><div class="stat-card"><span class="stat-label">Offers</span><strong>{{ offerCount }}</strong><span class="stat-note">The finish line is visible</span></div></section>
   <div class="view-switch" *ngIf="loaded"><button *ngFor="let view of views" [class.selected]="visualizer === view.key" (click)="selectView(view.key)">{{ view.label }}</button></div>
   <div class="dashboard-grid" *ngIf="loaded && visualizer === 'pulse'">
@@ -29,13 +31,14 @@ import { SankeyChartComponent } from './sankey-chart.component';
   </ng-container>
   <section class="panel chart-panel" *ngIf="loaded && visualizer === 'pulse' && jobs.length"><div class="panel-heading"><div><div class="eyebrow">Search rhythm</div><h2>Cumulative momentum</h2></div><span class="period-pill">Last 8 weeks · All statuses</span></div><div class="chart"><div class="y-axis"><span>{{ cumulative.max }}</span><span>4</span><span>2</span><span>0</span></div><div class="chart-area"><div class="grid-line" *ngFor="let line of [1,2,3,4]"></div><div class="columns"><div class="column" *ngFor="let point of cumulative.weekBars"><div class="column-fill" [style.height.%]="point"></div></div></div></div></div></section>` })
 export class DashboardComponent implements OnInit {
-  jobs: Job[] = []; prefs: Preferences | null = null; loaded = false;
+  jobs: Job[] = []; prefs: Preferences | null = null; loaded = false; coachStatus = '';
   visualizer = 'pulse'; stackMode: 'week' | 'month' = 'week'; dragOver = ''; draggingId: string | null = null; dragError = '';
   views = [{ key: 'pulse', label: 'Pulse' }, { key: 'kanban', label: 'Kanban' }, { key: 'sankey', label: 'Sankey flow' }, { key: 'funnel', label: 'Funnel' }, { key: 'line', label: 'Cumulative' }, { key: 'bar', label: 'Stacked bar' }];
   today = new Date();
-  constructor(private readonly jobsService: JobsService, private readonly auth: AuthService, private readonly preferences: PreferencesService) {}
+  constructor(private readonly jobsService: JobsService, private readonly auth: AuthService, private readonly preferences: PreferencesService, private readonly onboarding: OnboardingService) {}
   ngOnInit(): void {
     this.jobsService.list().subscribe(jobs => this.jobs = jobs);
+    this.onboarding.context().subscribe({ next: context => this.coachStatus = context.status, error: () => this.coachStatus = '' });
     this.preferences.get().subscribe(prefs => {
       this.prefs = prefs;
       this.visualizer = this.views.some(view => view.key === prefs.defaultView) ? prefs.defaultView : 'pulse';

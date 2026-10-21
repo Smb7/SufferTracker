@@ -13,6 +13,7 @@ import { AuthService } from '../core/auth.service';
         <nav>
           <a routerLink="/dashboard" routerLinkActive="active"><span class="nav-icon">◈</span> Overview</a>
           <a routerLink="/jobs" routerLinkActive="active"><span class="nav-icon">□</span> Applications</a>
+          <a routerLink="/onboarding" routerLinkActive="active"><span class="nav-icon">◇</span> Coach</a>
           <a routerLink="/settings" routerLinkActive="active"><span class="nav-icon">⚙</span> Settings</a>
           <a *ngIf="auth.user()?.isAdmin" routerLink="/admin" routerLinkActive="active"><span class="nav-icon">▣</span> Admin</a>
         </nav>

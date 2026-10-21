@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     ocr_endpoint: str = ""
     ocr_api_key: str = ""
     ocr_api_key_header: str = "Ocp-Apim-Subscription-Key"
+    ai_endpoint: str = ""
+    ai_api_key: str = ""
+    ai_api_key_header: str = "Authorization"
+    ai_model: str = ""
     app_env: str = "development"
     auto_migrate: bool = True
 

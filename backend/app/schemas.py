@@ -132,3 +132,70 @@ class JobResponse(APIModel):
 
 class PublicStatsResponse(APIModel):
     applications_this_week: int
+
+
+class ExperienceItem(APIModel):
+    title: str = ""
+    company: str = ""
+    start: str = ""
+    end: str = ""
+    highlights: str = ""
+
+
+class EducationItem(APIModel):
+    institution: str = ""
+    credential: str = ""
+    field: str = ""
+    year: str = ""
+    notes: str = ""
+
+
+class CareerGoals(APIModel):
+    target_roles: list[str] = []
+    industries: list[str] = []
+    locations: list[str] = []
+    work_style: str = ""
+    compensation: str = ""
+    timeline: str = ""
+    narrative: str = ""
+    constraints: str = ""
+
+
+class CareerContextResponse(APIModel):
+    status: str
+    summary: str
+    experience: list[ExperienceItem]
+    education: list[EducationItem]
+    skills: list[str]
+    interests: list[str]
+    goals: CareerGoals
+    missing: list[str]
+    provider: str
+    notice: str
+    updated_at: datetime = Field(alias="updatedAtUtc")
+
+
+class OnboardingMessageResponse(APIModel):
+    id: UUID
+    role: str
+    content: str
+    created_at: datetime = Field(alias="createdAtUtc")
+
+
+class OnboardingStateResponse(APIModel):
+    context: CareerContextResponse
+    messages: list[OnboardingMessageResponse]
+    provider_configured: bool
+
+
+class OnboardingMessageRequest(APIModel):
+    content: str
+
+
+class UpdateCareerContextRequest(APIModel):
+    summary: str | None = None
+    experience: list[ExperienceItem] | None = None
+    education: list[EducationItem] | None = None
+    skills: list[str] | None = None
+    interests: list[str] | None = None
+    goals: CareerGoals | None = None

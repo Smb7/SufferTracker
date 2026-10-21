@@ -23,7 +23,7 @@ export class RegisterComponent {
     if (!this.formValid()) { this.error = this.password !== this.confirmPassword ? 'Passwords do not match.' : 'Fill every field; passwords need at least 8 characters.'; return; }
     this.loading = true;
     this.auth.register(this.email.trim(), this.password, this.displayName.trim()).subscribe({
-      next: () => void this.router.navigate(['/dashboard']),
+      next: () => void this.router.navigate(['/onboarding']),
       error: response => {
         this.error = response?.status === 409 ? (response.error?.message ?? 'An account with that email already exists.') : 'Could not create the account. Check your details.';
         this.loading = false;
