@@ -199,3 +199,12 @@ class UpdateCareerContextRequest(APIModel):
     skills: list[str] | None = None
     interests: list[str] | None = None
     goals: CareerGoals | None = None
+
+
+class JobRequirementsResponse(APIModel):
+    title: str
+    company: str
+    required: list[str]
+    preferred: list[str]
+    keywords: list[str]
+    blocked_reason: str | None = None

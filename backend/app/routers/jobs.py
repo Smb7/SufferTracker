@@ -10,7 +10,8 @@ from app.database import get_db
 from app.deps import current_user
 from app.errors import APIError
 from app.models import JobApplication, User
-from app.schemas import JobResponse, JobWriteRequest
+from app.schemas import JobRequirementsResponse, JobResponse, JobWriteRequest
+from app.services.requirements import extract_requirements
 from app.services.timeline import TimelineError, synthesize, validate
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -102,6 +103,17 @@ def create_job(body: JobWriteRequest, user: User = Depends(current_user), db: Se
     db.commit()
     db.refresh(job)
     return _response(job)
+
+
+@router.get("/{job_id}/requirements", response_model=JobRequirementsResponse)
+def get_requirements(
+    job_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> JobRequirementsResponse:
+    job = _owned(db, job_id, user.id)
+    extracted = extract_requirements(job.title, job.company, job.description, job.skills)
+    return JobRequirementsResponse.model_validate(extracted)
 
 
 @router.get("/{job_id}", response_model=JobResponse)
