@@ -29,6 +29,10 @@ services:
       OCR_ENDPOINT: ${OCR_ENDPOINT:-}
       OCR_API_KEY: ${OCR_API_KEY:-}
       OCR_API_KEY_HEADER: ${OCR_API_KEY_HEADER:-Ocp-Apim-Subscription-Key}
+      AI_ENDPOINT: ${AI_ENDPOINT:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_API_KEY_HEADER: ${AI_API_KEY_HEADER:-Authorization}
+      AI_MODEL: ${AI_MODEL:-}
     ports:
       - "8080:8080"
     depends_on:

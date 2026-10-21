@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Uuid
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,6 +26,8 @@ class User(Base):
 
     preferences: Mapped["UserPreference | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     jobs: Mapped[list["JobApplication"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    career_profile: Mapped["CareerProfile | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    onboarding_messages: Mapped[list["OnboardingMessage"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserPreference(Base):
@@ -58,6 +60,42 @@ class JobApplication(Base):
     applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     user: Mapped[User] = relationship(back_populates="jobs")
+
+
+class CareerProfile(Base):
+    __tablename__ = "career_profiles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(20), default="not_started")
+    summary: Mapped[str] = mapped_column(default="")
+    experience: Mapped[list] = mapped_column(JSON, default=list)
+    education: Mapped[list] = mapped_column(JSON, default=list)
+    skills: Mapped[list] = mapped_column(JSON, default=list)
+    interests: Mapped[list] = mapped_column(JSON, default=list)
+    goals: Mapped[dict] = mapped_column(JSON, default=dict)
+    acknowledged: Mapped[dict] = mapped_column(JSON, default=dict)
+    provider: Mapped[str] = mapped_column(String(20), default="guided")
+    notice: Mapped[str] = mapped_column(default="")
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    user: Mapped[User] = relationship(back_populates="career_profile")
+
+
+class OnboardingMessage(Base):
+    __tablename__ = "onboarding_messages"
+    __table_args__ = (
+        UniqueConstraint("user_id", "seq", name="uq_onboarding_messages_user_seq"),
+        Index("ix_onboarding_messages_user_id_seq", "user_id", "seq"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    seq: Mapped[int] = mapped_column(default=1)
+    role: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    user: Mapped[User] = relationship(back_populates="onboarding_messages")
 
 
 class LoginEvent(Base):

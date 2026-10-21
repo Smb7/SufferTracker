@@ -8,6 +8,7 @@ import { LoginComponent } from './pages/login.component';
 import { RegisterComponent } from './pages/register.component';
 import { DashboardComponent } from './pages/dashboard.component';
 import { JobsComponent } from './pages/jobs.component';
+import { OnboardingComponent } from './pages/onboarding.component';
 import { SettingsComponent } from './pages/settings.component';
 import { AdminComponent } from './pages/admin.component';
 import { adminGuard } from './core/admin.guard';
@@ -19,6 +20,7 @@ export const routes: Routes = [
     { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     { path: 'dashboard', component: DashboardComponent },
     { path: 'jobs', component: JobsComponent },
+    { path: 'onboarding', component: OnboardingComponent },
     { path: 'settings', component: SettingsComponent },
     { path: 'admin', component: AdminComponent, canActivate: [adminGuard] }
   ]},
