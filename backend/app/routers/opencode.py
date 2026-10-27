@@ -23,9 +23,11 @@ from app.services.opencode import (
     ensure_available,
     list_models,
     mark_check,
+    SAVED_MODEL_UNSUPPORTED,
     require_model,
     save_connection,
     stored_key,
+    supported_model,
     verify_key,
 )
 
@@ -36,13 +38,16 @@ def _status(user: User, db: Session) -> OpenCodeStatusResponse:
     settings = get_settings()
     row = connection_for(user, db)
     if row is not None:
+        last_error = row.last_error
+        if not supported_model(row.model_id):
+            last_error = SAVED_MODEL_UNSUPPORTED
         return OpenCodeStatusResponse(
             configured=True,
             key_hint=row.key_hint,
             model_id=row.model_id,
             source="opencode",
             last_checked_at=row.last_checked_at,
-            last_error=row.last_error,
+            last_error=last_error,
         )
     if settings.ai_endpoint:
         return OpenCodeStatusResponse(configured=False, source="environment")

@@ -1,8 +1,9 @@
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.models import OpenCodeConnection, User
 from app.services.ai import AiProviderError, ChatResult
-from app.services.opencode import OpenCodeError
+from app.services.opencode import OpenCodeError, encrypt_key
 
 SECRET = "a" * 12
 KEY = "oc_sk_test_key_value"
@@ -147,6 +148,36 @@ def test_models_are_listed_with_the_saved_or_preview_key(client, monkeypatch) ->
     preview = client.get("/api/integrations/opencode/models", headers={**headers, "X-OpenCode-Key": "oc_sk_preview_key"})
     assert preview.status_code == 200
     assert seen["key"] == "oc_sk_preview_key"
+
+
+def test_saved_free_model_is_flagged_and_coaching_explains_why(client, db) -> None:
+    headers = _auth(client)
+    db.expire_all()
+    user = db.scalar(select(User).where(User.email == "opencode@example.com"))
+    assert user is not None
+    db.add(
+        OpenCodeConnection(
+            user_id=user.id,
+            api_key_ciphertext=encrypt_key(KEY, get_settings().jwt_key),
+            key_hint="oc_sk_test…",
+            model_id="deepseek-v4.1-flash-free",
+            last_error="",
+        )
+    )
+    db.commit()
+
+    status = client.get("/api/integrations/opencode", headers=headers)
+    assert status.status_code == 200
+    body = status.json()
+    assert body["configured"] is True
+    assert body["modelId"] == "deepseek-v4.1-flash-free"
+    assert "paid chat model" in body["lastError"]
+    assert KEY not in status.text
+
+    turned = client.post("/api/onboarding/messages", headers=headers, json={"content": "I write Python services."})
+    assert turned.status_code == 200
+    assert "paid chat model" in turned.json()["context"]["notice"]
+    assert KEY not in turned.text
 
 
 def test_bad_key_is_rejected_and_not_stored(client, db, monkeypatch) -> None:

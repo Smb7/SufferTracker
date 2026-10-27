@@ -19,6 +19,7 @@ from app.services.opencode import (
     list_models,
     read_opencode_text,
     require_model,
+    supported_model,
     verify_key,
 )
 
@@ -52,6 +53,10 @@ def test_require_model_hides_unknown_non_chat_and_free_ids() -> None:
     assert "not accepted" not in str(caught.value)
     with pytest.raises(OpenCodeError, match="not available"):
         require_model("big-pickle")
+    assert supported_model("gpt-5.5")
+    assert not supported_model("deepseek-v4.1-flash-free")
+    assert not supported_model("big-pickle")
+    assert not supported_model("jev-1.13")
 
 
 def test_list_models_intersects_live_catalog_and_keeps_default_first() -> None:

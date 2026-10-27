@@ -27,6 +27,7 @@ BROKEN_KEY = "The saved OpenCode key could not be read. Reconnect it in Settings
 KEY_REJECTED = "That API key was not accepted."
 KEY_CANNOT_LIST = "That API key cannot list models."
 MODEL_UNAVAILABLE = "That model is not available."
+SAVED_MODEL_UNSUPPORTED = "That saved model cannot be used from here. Choose a paid chat model in Settings."
 INFERENCE_KEY_REJECTED = "OpenCode rejected the API key."
 TEST_PROMPT = "Reply with the single word ok."
 
@@ -144,6 +145,11 @@ def require_model(model_id: str) -> str:
     return model
 
 
+def supported_model(model_id: str) -> bool:
+    """True when this client can call the id. Saved free or non-chat ids are not."""
+    return _selectable(model_id.strip())
+
+
 def encrypt_key(api_key: str, secret: str) -> str:
     return _fernet(secret).encrypt(api_key.encode("utf-8")).decode("ascii")
 
@@ -163,7 +169,8 @@ def resolve_ai(user: User, db: Session, settings: Settings | None = None) -> AiT
             return AiTarget("none", notice=BROKEN_KEY)
         if not key:
             return AiTarget("none", notice=BROKEN_KEY)
-        return AiTarget("opencode", model_id=row.model_id, api_key=key)
+        notice = "" if supported_model(row.model_id) else SAVED_MODEL_UNSUPPORTED
+        return AiTarget("opencode", model_id=row.model_id, api_key=key, notice=notice)
     if settings.ai_endpoint:
         return AiTarget("env")
     return AiTarget("none")
