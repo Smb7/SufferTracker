@@ -17,7 +17,7 @@ def _auth(client) -> dict[str, str]:
 
 
 def _allow(monkeypatch, live: set[str] | None = None) -> None:
-    ids = live if live is not None else {"deepseek-v4.1-flash-free", "gpt-5.5"}
+    ids = live if live is not None else {"deepseek-v4.1-flash", "gpt-5.5"}
 
     def verify(api_key: str, client=None) -> set[str]:
         assert api_key
@@ -26,7 +26,7 @@ def _allow(monkeypatch, live: set[str] | None = None) -> None:
     monkeypatch.setattr("app.routers.opencode.verify_key", verify)
     monkeypatch.setattr(
         "app.routers.opencode.list_models",
-        lambda client=None: [{"id": "deepseek-v4.1-flash-free", "family": "chat"}, {"id": "gpt-5.5", "family": "responses"}],
+        lambda client=None, api_key="": [{"id": "deepseek-v4.1-flash", "family": "chat"}, {"id": "gpt-5.5", "family": "responses"}],
     )
 
 
@@ -62,9 +62,9 @@ def test_connect_stores_hint_not_key_and_disconnects(client, db, monkeypatch) ->
     assert KEY not in row.api_key_ciphertext
     assert row.key_hint == "oc_sk_test…"
 
-    kept = client.put("/api/integrations/opencode", headers=headers, json={"apiKey": "  ", "modelId": "deepseek-v4.1-flash-free"})
+    kept = client.put("/api/integrations/opencode", headers=headers, json={"apiKey": "  ", "modelId": "deepseek-v4.1-flash"})
     assert kept.status_code == 200
-    assert kept.json()["modelId"] == "deepseek-v4.1-flash-free"
+    assert kept.json()["modelId"] == "deepseek-v4.1-flash"
     assert kept.json()["keyHint"] == "oc_sk_test…"
 
     unknown = client.patch("/api/integrations/opencode", headers=headers, json={"modelId": "jev-1.13"})
@@ -82,9 +82,9 @@ def test_model_change_and_connection_test(client, monkeypatch) -> None:
     _allow(monkeypatch)
     headers = _auth(client)
     client.put("/api/integrations/opencode", headers=headers, json={"apiKey": KEY, "modelId": "gpt-5.5"})
-    changed = client.patch("/api/integrations/opencode", headers=headers, json={"modelId": "deepseek-v4.1-flash-free"})
+    changed = client.patch("/api/integrations/opencode", headers=headers, json={"modelId": "deepseek-v4.1-flash"})
     assert changed.status_code == 200
-    assert changed.json()["modelId"] == "deepseek-v4.1-flash-free"
+    assert changed.json()["modelId"] == "deepseek-v4.1-flash"
 
     monkeypatch.setattr("app.routers.opencode.complete_opencode", lambda *args, **kwargs: ChatResult("ok", True))
     tested = client.post("/api/integrations/opencode/test", headers=headers)
@@ -102,6 +102,51 @@ def test_model_change_and_connection_test(client, monkeypatch) -> None:
     status = client.get("/api/integrations/opencode", headers=headers)
     assert "rejected" in status.json()["lastError"]
     assert client.post("/api/integrations/opencode/test").status_code == 401
+
+
+def test_refused_model_is_unavailable_and_not_stored(client, db, monkeypatch) -> None:
+    _allow(monkeypatch, {"gpt-5.5"})
+    headers = _auth(client)
+    refused = client.put(
+        "/api/integrations/opencode",
+        headers=headers,
+        json={"apiKey": KEY, "modelId": "deepseek-v4.1-flash"},
+    )
+    assert refused.status_code == 400
+    assert "not available" in refused.json()["message"]
+    assert "not accepted" not in refused.json()["message"]
+    assert KEY not in refused.text
+    db.expire_all()
+    user = db.scalar(select(User).where(User.email == "opencode@example.com"))
+    assert db.get(OpenCodeConnection, user.id) is None
+
+    connected = client.put("/api/integrations/opencode", headers=headers, json={"apiKey": KEY, "modelId": "gpt-5.5"})
+    assert connected.status_code == 200
+    blocked = client.patch("/api/integrations/opencode", headers=headers, json={"modelId": "deepseek-v4.1-flash"})
+    assert blocked.status_code == 400
+    assert "not available" in blocked.json()["message"]
+    assert client.get("/api/integrations/opencode", headers=headers).json()["modelId"] == "gpt-5.5"
+
+
+def test_models_are_listed_with_the_saved_or_preview_key(client, monkeypatch) -> None:
+    seen: dict[str, str] = {}
+
+    def listing(client=None, api_key: str = "") -> list[dict[str, str]]:
+        seen["key"] = api_key
+        return [{"id": "gpt-5.5", "family": "responses"}]
+
+    _allow(monkeypatch)
+    monkeypatch.setattr("app.routers.opencode.list_models", listing)
+    headers = _auth(client)
+    client.put("/api/integrations/opencode", headers=headers, json={"apiKey": KEY, "modelId": "gpt-5.5"})
+    listed = client.get("/api/integrations/opencode/models", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json() == [{"id": "gpt-5.5", "family": "responses"}]
+    assert seen["key"] == KEY
+
+    preview = client.get("/api/integrations/opencode/models", headers={**headers, "X-OpenCode-Key": "oc_sk_preview_key"})
+    assert preview.status_code == 200
+    assert seen["key"] == "oc_sk_preview_key"
 
 
 def test_bad_key_is_rejected_and_not_stored(client, db, monkeypatch) -> None:

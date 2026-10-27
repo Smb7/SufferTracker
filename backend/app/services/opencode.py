@@ -22,26 +22,25 @@ logger = logging.getLogger(__name__)
 
 INFERENCE_ROOT = "https://opencode.ai/inference"
 MODELS_URL = f"{INFERENCE_ROOT}/v1/models"
-DEFAULT_MODEL = "deepseek-v4.1-flash-free"
+DEFAULT_MODEL = "deepseek-v4.1-flash"
 BROKEN_KEY = "The saved OpenCode key could not be read. Reconnect it in Settings."
+KEY_REJECTED = "That API key was not accepted."
+KEY_CANNOT_LIST = "That API key cannot list models."
+MODEL_UNAVAILABLE = "That model is not available."
+INFERENCE_KEY_REJECTED = "OpenCode rejected the API key."
 TEST_PROMPT = "Reply with the single word ok."
 
-# Live /v1/models returns ids only. Families come from the Console docs so an
-# unknown id is hidden instead of guessed. Jev is not a chat model.
+# Free on the pricing table, but the id does not end in -free.
+FREE_IDS = {"big-pickle"}
+# Image generation is not a chat turn. Match id fragments, not display names.
+IMAGE_MARKERS = ("gpt-image", "dall-e", "imagen", "flux", "stable-diffusion", "image-gen")
+
+# Live /v1/models returns ids only. Families come from the Console model table so
+# an unknown id is hidden instead of guessed. Paid text models are included even
+# when their native API is Anthropic or Gemini: Console translates those onto
+# chat completions and the Responses API. Free-tier chat models, Jev / System
+# One, and image-only models are omitted because this client cannot use them.
 FAMILIES: dict[str, str] = {
-    "big-pickle": "chat",
-    "glm-5.3-flash-free": "chat",
-    "deepseek-v4.1-flash-free": "chat",
-    "minimax-m3.1-flash-free": "chat",
-    "beam-free": "chat",
-    "ll-alpha-free": "chat",
-    "longcat-2.5-preview-free": "chat",
-    "exo-free": "chat",
-    "mimo-v2.6-flash-free": "chat",
-    "mimo-v2.5-free": "chat",
-    "nemotron-3-ultra-free": "chat",
-    "nemotron-3.5-lightning-free": "chat",
-    "nemotron-3.5-super-vl-free": "chat",
     "qwen3.8-max": "chat",
     "deepseek-v4.1-flash": "chat",
     "deepseek-v4-pro": "chat",
@@ -104,8 +103,6 @@ FAMILIES: dict[str, str] = {
     "claude-haiku-5-5": "anthropic",
     "claude-haiku-4-5": "anthropic",
     "qwen3.8-flash": "anthropic",
-    "qwen3.7-max": "anthropic",
-    "qwen3.7-plus": "anthropic",
     "qwen3.6-plus": "anthropic",
     "qwen3.5-plus": "anthropic",
     "gemini-4-argon": "gemini",
@@ -140,7 +137,9 @@ def clean_api_key(value: str) -> str:
 
 def require_model(model_id: str) -> str:
     model = model_id.strip()
-    if model not in FAMILIES:
+    if _free(model):
+        raise OpenCodeError(MODEL_UNAVAILABLE, 400)
+    if model not in FAMILIES or _non_chat(model):
         raise OpenCodeError("Choose a supported OpenCode model.", 400)
     return model
 
@@ -174,33 +173,22 @@ def connection_for(user: User, db: Session) -> OpenCodeConnection | None:
     return db.get(OpenCodeConnection, user.id)
 
 
-def list_models(client: httpx.Client | None = None) -> list[dict[str, str]]:
-    live = _live_ids(client)
-    chosen = [model_id for model_id in FAMILIES if live is None or model_id in live]
+def list_models(client: httpx.Client | None = None, api_key: str = "") -> list[dict[str, str]]:
+    """Chat models this app can call. A key limits the list to ids that key can see."""
+    live = _fetch_ids(api_key, client)
+    chosen = [model_id for model_id in FAMILIES if _selectable(model_id) and (live is None or model_id in live)]
     chosen.sort(key=lambda item: (item != DEFAULT_MODEL, item))
     return [{"id": model_id, "family": FAMILIES[model_id]} for model_id in chosen]
 
 
 def verify_key(api_key: str, client: httpx.Client | None = None) -> set[str]:
-    """Confirm the key can list models. Returns the live ids, which may be empty."""
-    try:
-        response = _send("GET", MODELS_URL, api_key=api_key, client=client)
-    except httpx.HTTPError as exc:
-        logger.warning("OpenCode key check failed: %s", type(exc).__name__)
-        raise OpenCodeError("Could not reach OpenCode.", 502) from exc
-    if response.status_code in {401, 403}:
-        raise OpenCodeError("That API key was not accepted.", 400)
-    if response.status_code >= 400:
-        raise OpenCodeError("Could not reach OpenCode.", 502)
-    try:
-        return _model_ids(response.json())
-    except ValueError as exc:
-        raise OpenCodeError("Could not reach OpenCode.", 502) from exc
+    """Confirm the key can list models. Returns chat ids this app can call with it."""
+    return {item["id"] for item in list_models(client, api_key)}
 
 
 def ensure_available(model_id: str, live_ids: set[str]) -> None:
-    if live_ids and model_id not in live_ids:
-        raise OpenCodeError("That model is not available.", 400)
+    if model_id not in live_ids:
+        raise OpenCodeError(MODEL_UNAVAILABLE, 400)
 
 
 def complete_opencode(
@@ -210,6 +198,8 @@ def complete_opencode(
     client: httpx.Client | None = None,
 ) -> ChatResult:
     """Call the Console family for this model. Raises AiProviderError on failure."""
+    if _free(model_id) or _non_chat(model_id):
+        raise AiProviderError(MODEL_UNAVAILABLE)
     family = FAMILIES.get(model_id)
     if not family:
         raise AiProviderError("That OpenCode model is not supported.")
@@ -219,8 +209,10 @@ def complete_opencode(
     except httpx.HTTPError as exc:
         logger.warning("OpenCode request failed: %s", type(exc).__name__)
         raise AiProviderError("The OpenCode request failed.") from exc
-    if response.status_code in {401, 403}:
-        raise AiProviderError("OpenCode rejected the API key.")
+    if response.status_code == 401:
+        raise AiProviderError(INFERENCE_KEY_REJECTED)
+    if response.status_code == 403:
+        raise AiProviderError(MODEL_UNAVAILABLE)
     if response.status_code >= 400:
         logger.warning("OpenCode request failed: HTTP %s", response.status_code)
         raise AiProviderError("The OpenCode request failed.")
@@ -277,16 +269,46 @@ def _fernet(secret: str) -> Fernet:
     return Fernet(base64.urlsafe_b64encode(digest))
 
 
-def _live_ids(client: httpx.Client | None) -> set[str] | None:
+def _selectable(model_id: str) -> bool:
+    return model_id in FAMILIES and not _free(model_id) and not _non_chat(model_id)
+
+
+def _free(model_id: str) -> bool:
+    lowered = model_id.lower()
+    return lowered.endswith("-free") or lowered in FREE_IDS
+
+
+def _non_chat(model_id: str) -> bool:
+    lowered = model_id.lower()
+    if lowered.startswith("jev") or "systemone" in lowered:
+        return True
+    return any(marker in lowered for marker in IMAGE_MARKERS)
+
+
+def _fetch_ids(api_key: str, client: httpx.Client | None) -> set[str] | None:
+    """Live ids for this key. None means the public catalog could not be read."""
+    key = api_key.strip()
     try:
-        response = _send("GET", MODELS_URL, api_key="", client=client)
-    except httpx.HTTPError:
+        response = _send("GET", MODELS_URL, api_key=key, client=client)
+    except httpx.HTTPError as exc:
+        if key:
+            logger.warning("OpenCode model list failed: %s", type(exc).__name__)
+            raise OpenCodeError("Could not reach OpenCode.", 502) from exc
         return None
+    if key and response.status_code == 401:
+        raise OpenCodeError(KEY_REJECTED, 400)
+    if key and response.status_code == 403:
+        raise OpenCodeError(KEY_CANNOT_LIST, 400)
     if response.status_code >= 400:
+        if key:
+            logger.warning("OpenCode model list failed: HTTP %s", response.status_code)
+            raise OpenCodeError("Could not reach OpenCode.", 502)
         return None
     try:
         return _model_ids(response.json())
-    except ValueError:
+    except ValueError as exc:
+        if key:
+            raise OpenCodeError("Could not reach OpenCode.", 502) from exc
         return None
 
 

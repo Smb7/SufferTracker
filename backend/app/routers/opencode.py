@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -59,8 +59,24 @@ def get_opencode(user: User = Depends(current_user), db: Session = Depends(get_d
 
 
 @router.get("/models", response_model=list[OpenCodeModelResponse])
-def get_models(_user: User = Depends(current_user)) -> list[OpenCodeModelResponse]:
-    return [OpenCodeModelResponse.model_validate(item) for item in list_models()]
+def get_models(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    preview_key: str = Header(default="", alias="X-OpenCode-Key"),
+) -> list[OpenCodeModelResponse]:
+    key = preview_key.strip()
+    if not key:
+        row = connection_for(user, db)
+        if row is not None:
+            try:
+                key = stored_key(row, get_settings())
+            except OpenCodeError as exc:
+                raise _guard(exc) from exc
+    try:
+        models = list_models(api_key=key)
+    except OpenCodeError as exc:
+        raise _guard(exc) from exc
+    return [OpenCodeModelResponse.model_validate(item) for item in models]
 
 
 @router.put("", response_model=OpenCodeStatusResponse)
@@ -96,7 +112,9 @@ def update_opencode_model(
     if row is None:
         raise APIError(404, "Connect OpenCode before choosing a model.")
     try:
-        row.model_id = require_model(body.model_id)
+        model_id = require_model(body.model_id)
+        ensure_available(model_id, verify_key(stored_key(row, get_settings())))
+        row.model_id = model_id
     except OpenCodeError as exc:
         raise _guard(exc) from exc
     db.commit()
