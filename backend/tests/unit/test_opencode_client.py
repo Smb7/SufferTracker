@@ -9,12 +9,17 @@ from app.services.ai import AiProviderError, AiTarget
 from app.services.opencode import (
     DEFAULT_MODEL,
     INFERENCE_ROOT,
+    KEY_CANNOT_LIST,
+    KEY_REJECTED,
+    MODEL_UNAVAILABLE,
+    OpenCodeError,
     complete_opencode,
     decrypt_key,
     encrypt_key,
     list_models,
     read_opencode_text,
     require_model,
+    supported_model,
     verify_key,
 )
 
@@ -35,36 +40,96 @@ def test_encrypt_round_trip_and_rotated_secret_fails_closed() -> None:
         decrypt_key(token, "a-different-signing-key-000000000")
 
 
-def test_require_model_hides_unknown_and_non_chat_ids() -> None:
+def test_require_model_hides_unknown_non_chat_and_free_ids() -> None:
     assert require_model(" gpt-5.5 ") == "gpt-5.5"
-    with pytest.raises(Exception):
+    with pytest.raises(OpenCodeError, match="supported"):
         require_model("jev-1.13")
-    with pytest.raises(Exception):
+    with pytest.raises(OpenCodeError, match="supported"):
+        require_model("gpt-image-1")
+    with pytest.raises(OpenCodeError, match="supported"):
         require_model("not-a-model")
+    with pytest.raises(OpenCodeError, match="not available") as caught:
+        require_model("deepseek-v4.1-flash-free")
+    assert "not accepted" not in str(caught.value)
+    with pytest.raises(OpenCodeError, match="not available"):
+        require_model("big-pickle")
+    assert supported_model("gpt-5.5")
+    assert not supported_model("deepseek-v4.1-flash-free")
+    assert not supported_model("big-pickle")
+    assert not supported_model("jev-1.13")
 
 
 def test_list_models_intersects_live_catalog_and_keeps_default_first() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == httpx.URL("https://opencode.ai/inference/v1/models")
         assert "Authorization" not in request.headers
-        return httpx.Response(200, json={"data": [{"id": "gpt-5.5"}, {"id": "jev-1.13"}, {"id": DEFAULT_MODEL}, {"id": "test"}]})
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"id": "gpt-5.5"},
+                    {"id": "jev-1.13"},
+                    {"id": "jev-1.13-free"},
+                    {"id": DEFAULT_MODEL},
+                    {"id": "deepseek-v4.1-flash-free"},
+                    {"id": "flint-40b-free"},
+                    {"id": "big-pickle"},
+                    {"id": "gpt-image-1"},
+                    {"id": "qwen3.7-max"},
+                    {"id": "test"},
+                    {"id": "claude-opus-5-5-backup"},
+                ]
+            },
+        )
 
     models = list_models(_client(handler))
     ids = [item["id"] for item in models]
     assert ids[0] == DEFAULT_MODEL
     assert "gpt-5.5" in ids
     assert "jev-1.13" not in ids
+    assert "deepseek-v4.1-flash-free" not in ids
+    assert "flint-40b-free" not in ids
+    assert "big-pickle" not in ids
+    assert "gpt-image-1" not in ids
+    assert "qwen3.7-max" not in ids
     assert "test" not in ids
+    assert "claude-opus-5-5-backup" not in ids
     assert models[ids.index("gpt-5.5")]["family"] == "responses"
+    assert not any(item["id"].endswith("-free") for item in models)
 
 
-def test_list_models_falls_back_to_the_static_catalog() -> None:
+def test_list_models_uses_the_key_and_hides_what_it_cannot_call() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == f"Bearer {KEY}"
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "gpt-5.5"}, {"id": "jev-1.13"}, {"id": "beam-free"}, {"id": "gpt-image-1"}]},
+        )
+
+    models = list_models(_client(handler), KEY)
+    assert [item["id"] for item in models] == ["gpt-5.5"]
+
+
+def test_list_models_falls_back_to_paid_chat_models_only() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"message": "down"})
 
     models = list_models(_client(handler))
-    assert models[0]["id"] == DEFAULT_MODEL
+    ids = [item["id"] for item in models]
+    assert ids[0] == DEFAULT_MODEL
     assert any(item["id"] == "claude-sonnet-4-6" and item["family"] == "anthropic" for item in models)
+    assert "qwen3.7-max" not in ids
+    assert "minimax-m3.1-flash-free" not in ids
+    assert not any(item["id"].endswith("-free") or item["id"] in {"big-pickle", "jev-1.13"} for item in models)
+
+
+def test_list_models_does_not_invent_a_catalog_for_a_key() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"message": KEY})
+
+    with pytest.raises(OpenCodeError, match="reach") as caught:
+        list_models(_client(handler), KEY)
+    assert KEY not in str(caught.value)
 
 
 def test_verify_key_rejects_unauthorized_without_echoing_the_key() -> None:
@@ -72,9 +137,21 @@ def test_verify_key_rejects_unauthorized_without_echoing_the_key() -> None:
         assert request.headers["Authorization"] == f"Bearer {KEY}"
         return httpx.Response(401, json={"message": KEY})
 
-    with pytest.raises(Exception, match="not accepted") as caught:
+    with pytest.raises(OpenCodeError, match="not accepted") as caught:
         verify_key(KEY, _client(handler))
     assert KEY not in str(caught.value)
+    assert str(caught.value) == KEY_REJECTED
+
+
+def test_verify_key_does_not_treat_list_forbidden_as_a_bad_key() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"message": KEY})
+
+    with pytest.raises(OpenCodeError, match="cannot list") as caught:
+        verify_key(KEY, _client(handler))
+    assert KEY not in str(caught.value)
+    assert "not accepted" not in str(caught.value)
+    assert str(caught.value) == KEY_CANNOT_LIST
 
 
 def test_complete_opencode_posts_each_text_family() -> None:
@@ -129,11 +206,31 @@ def test_complete_opencode_posts_each_text_family() -> None:
 
 
 def test_complete_opencode_rejects_an_unmapped_model_and_empty_reply() -> None:
-    with pytest.raises(AiProviderError):
+    with pytest.raises(AiProviderError, match="not available"):
         complete_opencode([{"role": "user", "content": "hi"}], "jev-1.13", KEY)
+    with pytest.raises(AiProviderError, match="not available"):
+        complete_opencode([{"role": "user", "content": "hi"}], "deepseek-v4.1-flash-free", KEY)
     client = _client(lambda request: httpx.Response(200, json={"content": "  "}))
     with pytest.raises(AiProviderError):
         complete_opencode([{"role": "user", "content": "hi"}], DEFAULT_MODEL, KEY, client)
+
+
+def test_complete_opencode_reports_a_refused_model_as_unavailable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"message": KEY})
+
+    with pytest.raises(AiProviderError, match="not available") as caught:
+        complete_opencode([{"role": "user", "content": "hi"}], "gpt-5.5", KEY, _client(handler))
+    assert "rejected" not in str(caught.value)
+    assert KEY not in str(caught.value)
+    assert str(caught.value) == MODEL_UNAVAILABLE
+
+
+def test_complete_opencode_still_reports_an_unauthorized_key() -> None:
+    client = _client(lambda request: httpx.Response(401, json={"message": KEY}))
+    with pytest.raises(AiProviderError, match="rejected") as caught:
+        complete_opencode([{"role": "user", "content": "hi"}], "gpt-5.5", KEY, client)
+    assert KEY not in str(caught.value)
 
 
 def test_read_opencode_text_ignores_reasoning_only_output() -> None:
